@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="calculator.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="left-column">
+      <section class="panel calendar-panel">
+        <div class="calendar-header">
+          <div class="clock-wrap" id="clock-wrap" role="button" aria-label="Cambia vista orologio">
+            <div class="flip-clock" id="flip-clock" aria-live="polite">
+              <div class="flip-unit" data-unit="hours">
+                <span class="flip-value">00</span>
+              </div>
+              <div class="flip-sep">:</div>
+              <div class="flip-unit" data-unit="minutes">
+                <span class="flip-value">00</span>
+              </div>
+            </div>
+            <div class="analog-clock" id="analog-clock" aria-hidden="true">
+              <div class="analog-face"></div>
+              <div class="hand hour"></div>
+              <div class="hand minute"></div>
+              <div class="center-dot"></div>
+            </div>
+          </div>
+          <div class="moon-now" id="moon-now">
+            <span class="moon-icon" aria-hidden="true">🌑</span>
+            <div class="moon-meta">
+              <span class="moon-title">Luna</span>
+              <span class="moon-phase">—</span>
+            </div>
+          </div>
+        </div>
+        <div class="months" id="months"></div>
+      </section>
+    </aside>
+
+    <main class="right-column">
+      <section class="panel fx-panel">
+        <div class="fx-card">
+          <div class="fx-meta">
+            <div class="fx-title">
+              <span>EUR/USD</span>
+              <span class="fx-status" id="fx-status">•</span>
+            </div>
+            <div class="fx-price" id="fx-price">--</div>
+            <div class="fx-change" id="fx-change">--</div>
+            <div class="fx-updated" id="fx-updated">Aggiornamento: --</div>
+            <div class="fx-mini">
+              <span>Trend giornaliero</span>
+              <canvas id="fx-mini-chart" width="240" height="80" aria-label="Trend giornaliero EUR/USD"></canvas>
+            </div>
+          </div>
+          <div class="fx-chart">
+            <canvas id="fx-chart" width="640" height="260" aria-label="Grafico EUR/USD anno su anno"></canvas>
+          </div>
+        </div>
+        <div class="trading-panel" id="trading-panel">
+          <div class="trading-frame">
+            <iframe
+              src="https://tradingeconomics.com/euro-area/currency"
+              title="Trading Economics - Euro Area Currency"
+              loading="lazy"
+              referrerpolicy="no-referrer"
+            ></iframe>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel calculator-panel">
+        <header class="panel-header">
+          <p>Calcolatrice Olivetti Logos replica</p>
+        </header>
+
+        <div class="calculator-wrapper" tabindex="0">
+          <!-- Corpo Macchina -->
+          <div class="calc-body">
+            <!-- Focus LED -->
+            <div class="focus-led"></div>
+            <!-- VFD Display -->
+            <div class="vfd-display">
+              <!-- Indicators Left -->
+              <div class="vfd-status-icons left">
+                <span class="vfd-icon off" id="icon-gt">GT</span>
+                <span class="vfd-icon off" id="icon-minus">-</span>
+                <span class="vfd-icon off" id="icon-mem">M</span>
+              </div>
+              <span class="vfd-text" id="vfd-display">0</span>
+              <div class="vfd-stack" id="vfd-stack" aria-hidden="true"></div>
+              <!-- Indicators Right -->
+              <div class="vfd-status-icons right">
+                 <span class="vfd-icon off" id="icon-acc1">I</span>
+                 <span class="vfd-icon off" id="icon-acc2">II</span>
+                 <span class="vfd-icon off" id="icon-error">E</span>
+              </div>
+            </div>
+
+            <!-- Switches Row -->
+            <div class="calc-switches">
+                <!-- RO: 3 posizioni (0, 5, 9) -->
+                <div class="switch-wrapper multi-switch ro-switch" title="Arrotondamento">
+                    <span class="switch-label">RO</span>
+                    <!-- Default su 5 (indice 1) -->
+                    <input type="range" class="switch-slider" id="switch-ro" min="0" max="2" step="1" value="1">
+                    <div class="switch-ticks">
+                        <span>0</span>
+                        <span>5</span>
+                        <span>9</span>
+                    </div>
+                </div>
+
+                <!-- DEC: 6 posizioni (0, 2, 4, 6, F) -->
+                <div class="switch-wrapper multi-switch dec-switch" title="Decimali">
+                    <!-- F per Floating -->
+                    <span class="switch-label">DEC</span>
+                    <!-- 5 posizioni: 0, 2, 4, 6, F -->
+                    <input type="range" class="switch-slider" id="switch-dec" min="0" max="4" step="1" value="1">
+                    <div class="switch-ticks switch-ticks-dec">
+                        <span>0</span>
+                        <span>2</span>
+                        <span>4</span>
+                        <span>6</span>
+                        <span>F</span>
+                    </div>
+                </div>
+
+                <!-- ACC: On/Off -->
+                <div class="switch-wrapper" title="Totale (Accumulo)">
+                    <span class="switch-label">ACC</span>
+                    <label class="switch">
+                        <input type="checkbox" id="switch-acc" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
+                <!-- PRT: On/Off -->
+                <div class="switch-wrapper" title="Stampa">
+                    <span class="switch-label">PRT</span>
+                    <label class="switch">
+                        <input type="checkbox" id="switch-prt" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Tastiera -->
+            <div class="calc-keyboard-container">
+              
+              <!-- Nuova fila tasti funzioni (Cost, Sell, Margin...) -->
+              <div class="calc-func-keys">
+                  <button class="key-btn key-rect key-gray" data-key="COST">COST</button>
+                  <button class="key-btn key-rect key-gray" data-key="SELL">SELL</button>
+                  <button class="key-btn key-rect key-gray" data-key="MARGIN">MARGIN</button>
+                  <button class="key-btn key-rect key-gray" data-key="TAX+">TAX+</button>
+                  <button class="key-btn key-rect key-gray" data-key="TAX-">TAX-</button>
+                  <button class="key-btn key-rect key-gray" data-key="RATE">RATE</button>
+              </div>
+
+              <div class="calc-main-keys">
+              <!-- Blocco 1: Moltiplicazione/Divisione (Sinistra) -->
+              <div class="key-block block-left">
+                <!-- Colonna 1 -->
+                <button class="key-btn key-square key-cyan" data-key="Δ" title="Variazione % (Tasto: d)">Δ</button>
+                <button class="key-btn key-square key-cyan" data-key="√" title="Radice Quadrata (Tasto: r)">√</button>
+                <button class="key-btn key-square key-cyan" data-key="^" title="Potenza (Tasto: ^ o p)">xʸ</button>
+                <button class="key-btn key-square key-cyan" data-key="#" title="Non-Add / Data (Tasto: #)">#</button>
+                
+                <!-- Colonna 2 -->
+                <button class="key-btn key-square key-cyan" data-key="x">x</button>
+                <button class="key-btn key-square key-cyan" data-key="=">=</button>
+                <button class="key-btn key-square key-cyan" data-key="%">%</button>
+                <button class="key-btn key-square key-cyan" data-key="÷">÷</button>
+              </div>
+
+              <!-- Blocco 2: Numerico (Centrale) -->
+              <div class="key-block block-center">
+                <button class="key-btn key-round" data-key="CE" title="Cancella / Tutto (Tasto: Canc/Esc)">CE</button>
+                <button class="key-btn key-round" data-key="7">7</button>
+                <button class="key-btn key-round" data-key="8">8</button>
+                <button class="key-btn key-round" data-key="9">9</button>
+                
+                <button class="key-btn key-round" data-key="±">±</button>
+                <button class="key-btn key-round" data-key="4">4</button>
+                <button class="key-btn key-round" data-key="5">5</button>
+                <button class="key-btn key-round" data-key="6">6</button>
+                
+                <button class="key-btn key-round" data-key=".">.</button>
+                <button class="key-btn key-round" data-key="1">1</button>
+                <button class="key-btn key-round" data-key="2">2</button>
+                <button class="key-btn key-round" data-key="3">3</button>
+                
+                <button class="key-btn key-round key-double-h" data-key="0">0</button>
+                <button class="key-btn key-round" data-key="00" title="Doppio Zero (Numpad: Ctrl + 0)">00</button>
+                <button class="key-btn key-round" data-key="000" title="Triplo Zero (Numpad: Alt + 0)">000</button>
+              </div>
+
+              <!-- Blocco 3: Operatori/Totali (Destra) -->
+              <div class="key-block block-right">
+                <!-- Riga 1 -->
+                <button class="key-btn key-square key-green key-double-h" style="grid-column: span 2;" data-key="-">-</button>
+                <button class="key-btn key-square key-green" data-key="T1" title="Totale (Tasto: t)">T</button>
+                <button class="key-btn key-square key-light-green" data-key="MC" title="Memory Clear">MC</button>
+
+                <!-- Blocco sotto: Tasto + Grande e controlli laterali -->
+                <div class="block-right-lower">
+                   <button class="key-btn key-square key-green key-plus-large" data-key="+">+</button>
+                   <div class="block-right-side-cols">
+                      <!-- Colonna Subtotali -->
+                      <button class="key-btn key-square key-green" data-key="S1" title="Subtotale (Tasto: i)">S</button>
+                      <button class="key-btn key-square key-green" data-key="GT" title="Grand Total (Tasto: g)">GT</button>
+                      <button class="key-btn key-square key-green" data-key="CNT" title="Conteggio (Tasto: n)">CNT</button>
+                      
+                      <!-- Colonna Tot 2 -->
+                      <button class="key-btn key-square key-light-green" data-key="MR" title="Memory Recall">MR</button>
+                      <button class="key-btn key-square key-light-green" data-key="M-" title="Memory Minus">M-</button>
+                      <button class="key-btn key-square key-light-green" data-key="M+" title="Memory Plus">M+</button>
+                   </div>
+                </div>
+              </div>
+              </div> <!-- close calc-main-keys -->
+            </div>
+          </div>
+
+          <!-- Carta Destra -->
+          <div class="paper-container">
+            <div class="paper-tape" id="paper-tape">
+              <!-- JS will append rows here -->
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="moon.js"></script>
+  <script src="script.js"></script>
+  <script src="business.js"></script>
+  <script src="calculator-engine.js"></script>
+  <script src="calculator.js"></script>
+</body>
+</html>

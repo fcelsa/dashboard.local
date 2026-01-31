@@ -1,0 +1,615 @@
+/* Calcolatrice stile Olivetti Logos 182 PD Inspired */
+
+.calculator-wrapper {
+    display: grid;
+    grid-template-columns: 1fr 360px; /* Tastiera | Carta (Allargata a 360px) */
+    gap: 30px;
+    height: 100%;
+    align-items: start;
+    font-family: "Inter", sans-serif;
+}
+
+/* --- Lato Sinistro: Macchina --- */
+.calc-body {
+    background: #556887; /* colore scocca */
+    border-radius: 8px;
+    padding: 30px;
+    box-shadow: 
+        inset 0 1px 0 rgba(255,255,255,0.5),
+        0 20px 50px rgba(0,0,0,0.5);
+    display: flex;
+    flex-direction: column;
+    gap: 15px; /* Ridotto il gap generale */
+    position: relative;
+    border-bottom: 8px solid #343e4e;
+}
+
+/* Focus LED */
+.focus-led {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: #300; /* Spento (Rosso scuro) */
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.5);
+    position: absolute;
+    top: 15px; 
+    left: 30px; /* Allineato col padding sinistro */
+    transition: background-color 0.2s, box-shadow 0.2s;
+    border: 1px solid #222;
+}
+
+/* Accensione LED su Hover o Focus */
+.calculator-wrapper:hover .focus-led,
+.calculator-wrapper:focus-within .focus-led {
+    background-color: #ff3300; /* Acceso (Rosso vivo) */
+    box-shadow: 0 0 5px #ff3300, inset 0 1px 1px rgba(255,255,255,0.3);
+}
+
+/* Display VFD */
+.vfd-display {
+    background: #0d1110;
+    padding: 10px 15px;
+    border-radius: 4px;
+    border: 4px solid #343e4e; /* Cornice display */
+    box-shadow: inset 0 0 15px rgba(0,0,0,0.9);
+    height: 75px; /* Ridotto altezza da 85px */
+    display: flex;
+    align-items: center;
+    justify-content: space-between; /* Spazio tra status e numeri */
+    overflow: hidden;
+    margin-bottom: 12px; /* Già ridotto precedentemente */
+    margin-top: 10px; /* Spazio per il LED sopra */
+    position: relative;
+    z-index: 10;
+}
+
+.vfd-text {
+    flex-grow: 1;
+    text-align: right;
+    font-family: "Droid Sans Mono", monospace;
+    font-size: 2.1rem; /* Ridotto per lasciare spazio allo stack */
+    color: #00ffaa;
+    text-shadow: 0 0 8px rgba(0, 255, 170, 0.5);
+    letter-spacing: 0.1em;
+    margin: 0 10px;
+}
+
+.vfd-stack {
+    position: absolute;
+    left: 42px;
+    right: 14px;
+    bottom: 6px;
+    font-family: "Droid Sans Mono", monospace;
+    font-size: 0.55rem;
+    color: rgba(0, 255, 170, 0.7);
+    letter-spacing: 0.05em;
+    text-align: left;
+    pointer-events: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Status Icons VFD */
+.vfd-status-icons {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-family: sans-serif;
+    font-size: 0.7rem;
+    color: #004433; /* Spento (verde scuro) */
+}
+.vfd-icon {
+    font-weight: bold;
+    text-transform: uppercase;
+}
+.vfd-icon.on {
+    color: #ff3300; /* Acceso (rosso o ambra) */
+    text-shadow: 0 0 5px rgba(255, 50, 0, 0.8);
+}
+.vfd-icon.off {
+    opacity: 0.3;
+}
+
+
+/* --- SWITCHES ROW --- */
+.calc-switches {
+    display: flex;
+    justify-content: space-between; /* Distribuisce uniformemente nella larghezza */
+    align-items: flex-start; /* Allinea in alto per allineare etichette e slider */
+    gap: 10px;
+    margin-bottom: 10px; /* Ridotto per avvicinare alla tastiera */
+    padding: 0 5px; /* Margini laterali minimi */
+}
+
+.switch-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    position: relative;
+}
+
+.switch-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #888; /* Etichetta sopra il blocco */
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 2px;
+}
+
+/* Switch Multi-Posizione (Slider) */
+/* .multi-switch { } Rimosso regola vuota */
+.ro-switch { width: 60px; }  /* 3 posizioni */
+.dec-switch { width: 120px; } /* 6 posizioni */
+
+/* Ticks Label (Stile etichette 0 5 9 ecc) */
+.switch-ticks {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0 2px;
+    margin-top: 2px; /* Piccola distanza dallo slider */
+}
+.switch-ticks span {
+    font-size: 0.65rem;
+    font-family: sans-serif;
+    color: #bbb;
+    font-weight: 600;
+    width: 10px;
+    text-align: center;
+}
+
+/* INPUT RANGE Custom Styling */
+input[type=range].switch-slider {
+    -webkit-appearance: none; /* Rimuove styling default browser */
+    appearance: none;         /* Standard property */
+    width: 100%;
+    background: transparent;
+    margin: 0;
+    cursor: pointer;
+}
+
+/* Traccia dello Slider */
+input[type=range].switch-slider::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 16px;
+    cursor: pointer;
+    background: #222; /* Sfondo scuro incassato */
+    border-radius: 2px;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.6);
+}
+
+/* Pomello (Thumb) dello Slider */
+input[type=range].switch-slider::-webkit-slider-thumb {
+    height: 12px;
+    width: 12px;
+    border-radius: 1px;
+    background: #e0e0dc; /* Colore simile ai tasti o chiaro */
+    cursor: pointer;
+    -webkit-appearance: none;
+    margin-top: 2px; /* Centramento verticale nel track (16-12)/2 = 2 */
+    box-shadow: 
+        0 1px 2px rgba(0,0,0,0.5),
+        inset 0 1px 0 rgba(255,255,255,0.8); /* Effetto rilievo 3D */
+}
+
+/* Switch Toggle Styling (Slide puro per ACC/PRT) */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 32px; /* Larghezza fissa per i 2 stati */
+    height: 16px;
+}
+/* ... resto invariato per input e slider del checkbox ... */
+.switch input { 
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: #222; /* Base switch scura */
+    transition: .2s;
+    border-radius: 2px;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 12px;
+    width: 12px;
+    left: 2px;
+    bottom: 2px;
+    background-color: #e0e0dc; /* Uniformato colore pomello al range */
+    box-shadow: 0 1px 1px rgba(0,0,0,0.5);
+    transition: .2s;
+    border-radius: 1px;
+}
+
+input:checked + .slider {
+    background-color: #222; 
+}
+
+input:checked + .slider:before {
+    transform: translateX(16px);
+    background-color: #e0e0dc; /* Mantieni colore neutro "meccanico" come richiesto */
+}
+
+
+/* Container Tastiera */
+.calc-keyboard-container {
+    display: flex;
+    flex-direction: column;
+    gap: 24px; /* gap fra riga funzioni e tastiera principale */
+    padding: 15px;
+    background: #333333; /* Sfondo tastiera scuro */
+    border-radius: 8px;
+    box-shadow: inset 0 2px 10px rgba(0,0,0,0.5);
+}
+
+.calc-func-keys {
+    display: flex;
+    justify-content: space-between;
+    width: 596px; /* Allineato esattamente alla larghezza dei tasti principali */
+    margin: 0 auto; /* Centrato nel container */
+}
+
+.calc-main-keys {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+}
+
+/* BLOCCHI TASTI */
+.key-block {
+    display: grid;
+    gap: 8px;
+}
+
+/* Blocco 1: Sinistra (2 colonne x 4 righe) */
+.block-left {
+    grid-template-columns: repeat(2, 50px);
+    grid-template-rows: repeat(4, 50px);
+    grid-auto-flow: column; /* Importante per l'ordine verticale */
+}
+
+/* Blocco 2: Centrale (Numerico - 4 colonne x 4 righe) */
+.block-center {
+    grid-template-columns: repeat(4, 50px);
+    grid-template-rows: repeat(4, 50px);
+}
+
+/* Blocco 3: Destra (Totali) */
+.block-right {
+    display: grid;
+    grid-template-columns: repeat(4, 50px);
+    grid-template-rows: 50px auto;
+    gap: 8px; 
+}
+
+/* Struttura interna parte bassa blocco destro */
+.block-right-lower {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 108px 1fr; /* Tasto + largo 2 colonne + gap */
+    gap: 8px;
+}
+
+.block-right-side-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: repeat(3, 50px);
+    grid-auto-flow: column;
+    gap: 8px;
+}
+
+/* --- STILI TASTI --- */
+.key-btn {
+    border: none;
+    font-family: "Inter", sans-serif;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    position: relative;
+    box-shadow: 
+        0 4px 0 rgba(0,0,0,0.3),
+        0 5px 8px rgba(0,0,0,0.2);
+    transition: transform 0.05s, box-shadow 0.05s;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1;
+}
+
+.key-btn:active, .key-btn.active {
+    transform: translateY(4px);
+    box-shadow: none;
+}
+
+/* Pseudo-elemento per il "Tasto Fisico" sopra la base */
+.key-btn::after {
+    content: attr(data-key);
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 
+        inset 0 1px 0 rgba(255, 255, 255, 0.2), 
+        0 2px 4px rgba(0,0,0,0.3); /* Ombra del tasto sulla base */
+    z-index: 2;
+}
+
+/* --- TASTI RETTANGOLARI cost sell margin tax+ tax- rate --- */
+.key-rect {
+    width: 64px; 
+    height: 32px;
+    border-radius: 4px;
+    background: #2b3036; /* Base scura */
+    color: #eee;
+    font-size: 0.75rem;
+}
+.key-rect::after {
+    width: 58px; /* Adattato al nuovo width */
+    height: 24px; /* Adattato al nuovo height */
+    border-radius: 3px;
+    /* Il colore viene definito da key-gray */
+}
+
+/* --- TASTI ROTONDI (Blocco Centrale) --- */
+.key-round {
+    background-color: #e6e4d5; /* Base Crema */
+    border-radius: 4px;        /* Base Quadrata */
+    color: transparent;        /* Nascondi testo base */
+}
+
+.key-round::after {
+    width: 36px; height: 36px;
+    background: #383e45;       /* Tasto Scuro */
+    border-radius: 50%;        /* Rotondo */
+    color: #e6e4d5;            /* Testo Crema */
+    font-size: 1.1rem;
+}
+
+/* Tasto 0 Doppio: Base larga, tasto fisico largo "pillola" */
+.key-round.key-double-h {
+    grid-column: span 2;
+    background-color: #e6e4d5;
+}
+.key-round.key-double-h::after {
+    width: 86px;               /* Più largo */
+    border-radius: 18px;       /* Pillola */
+}
+
+
+/* --- TASTI QUADRATI (Blocchi Laterali) --- */
+/* Stesso concetto del round: Base + Tasto sopra, ma tasto è quadrato */
+
+.key-square {
+    border-radius: 4px;        /* Base Quadrata */
+    color: transparent;        /* Nascondi testo base */
+}
+
+.key-square::after {
+    width: 36px; height: 36px; /* Dimensioni tasto fisico quadrato */
+    border-radius: 6px;        /* Angoli leggermente smussati */
+    font-size: 1.1rem;
+}
+
+/* Doppio Verticale */
+.key-square.key-double-v {
+    grid-row: span 2;
+    height: 100%;
+}
+.key-square.key-double-v::after {
+    height: 94px; /* Altezza doppia (50+50-gap/padding) aggiustata */
+}
+/* Doppio Orizzontale */
+.key-square.key-double-h {
+    grid-column: span 2;
+    width: 100%;
+}
+.key-square.key-double-h::after {
+    width: 94px;
+}
+/* Gigante + : 3 righe x 2 colonne verticalmente ~ 210px? 
+   Grid rows 50px * 3 + gap 8px * 2 = 150 + 16 = 166px in altezza
+   Grid cols 50px * 2 + gap 8px = 108px in larghezza
+   Aspetta, il blocco lower è definito "108px 1fr". Tasto + occupa col 1.
+   Key-plus-large deve avere tasto fisico che copre quest'area.
+*/
+.key-square.key-plus-large {
+    height: 100%; /* Gestito dalla griglia */
+    width: 100%;
+}
+.key-square.key-plus-large::after {
+    width: 94px;   /* 50 + 50 - margini */
+    height: 154px; /* 3 righe (50*3 + 2 gaps) - padding. 166 - un po' */
+}
+
+
+/* --- COLORI SPECIFICI TASTI QUADRATI --- */
+
+/* Blocco SX: Azzurro */
+.key-cyan {
+    background-color: #5f8a9e; /* Base Azzurra desaturata */
+}
+.key-cyan::after {
+    background-color: #383e45; /* Tasto scuro */
+    color: #89cff0;            /* Scritta Azzurra */
+}
+
+/* Blocco DX: Verde Scuro (Tasto T, S, ecc) */
+.key-green {
+    background-color: #5d7a72; /* Base verde scura desaturata */
+}
+.key-green::after {
+    background-color: #383e45; /* Tasto fisico scuro come i numerici */
+    color: #e6e4d5;            /* Testo Crema */
+}
+/* Correzione richiesta: "il colore del testo è uguale a quello della parte di sfondo" -> Sfondo del tasto o sfondo della base? 
+   Se intendi "testo colore verde", ok. Se intendi "colore crema", ok.
+   Dalle foto Logos 182, i tasti verdi hanno testo bianco. I tasti chiari hanno testo verde scuro.
+   "Escluso i tasti del secondo totalizzatore che hanno un colore verdi più chiaro... ed il colore del testo è uguale a quello della parte di sfondo" -> Forse intendevi "colore testo uguale a quello dello sfondo (scuro)"?
+   Provo: Tasti scuri -> Testo Bianco. Tasti Chiari -> Testo Verde Scuro.
+*/
+
+
+/* Blocco DX: Verde Chiaro (T2, S2, op2) */
+.key-light-green {
+    background-color: #8da39f; /* Base */
+}
+.key-light-green::after {
+    background-color: #383e45; /* Tasto fisico scuro come i numerici */
+    color: #e6e4d5;            /* Testo Crema */
+}
+
+/* --- OVERRIDES SPECIFICI PER TASTI --- */
+
+/* Tasto Meno: Rosso e Grande */
+button[data-key="-"]::after {
+    color: #b74040; /* Rosso */
+    font-size: 1.5rem;
+}
+
+/* Tasto Più: Grande */
+button[data-key="+"]::after {
+    font-size: 1.5rem;
+}
+
+/* Tasto CNT: Font piccolo */
+button[data-key="CNT"]::after {
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+/* Tasti Funzione Rettangolari (Grigi) */
+.key-gray {
+    background-color: #4a4a4a;
+}
+.key-gray::after {
+    background-color: #b0b0b0; /* Grigio chiaro */
+    color: #111;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.5);
+}
+
+
+/* Carta */
+.paper-container {
+    background: #444; /* Sfondo scuro attorno alla carta */
+    box-shadow: 
+        inset 0 10px 20px rgba(0,0,0,0.5),
+        0 5px 15px rgba(0,0,0,0.3);
+    height: 600px;
+    overflow: hidden;
+    position: relative;
+    border-radius: 4px;
+    padding: 10px; /* Spazio attorno al rotolo */
+}
+
+/* Rotolo di carta */
+.paper-tape {
+    background-color: #fdfae7; /* Carta leggermente più ingiallita */
+    background-image: 
+        linear-gradient(90deg, rgba(0,0,0,0.06) 0%, rgba(0,0,0,0) 5%, rgba(0,0,0,0) 95%, rgba(0,0,0,0.06) 100%),
+        url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.15'/%3E%3C/svg%3E");
+    color: #2a2a2a; /* Inchiostro scuro quasi nero */
+    
+    font-family: "Courier Prime", "Courier New", monospace;
+    font-size: 1.1rem;
+    font-weight: 600;
+    line-height: 1.5;
+    
+    height: 100%;
+    overflow-y: scroll; /* Scrollbar sempre visibile per evitare "salto" layout */
+    display: flex;
+    flex-direction: column;
+    /* justify-content: flex-end; RIMOSSO perché rompe lo scroll su overflow */
+    
+    padding: 20px 15px;
+    box-shadow: 
+        0 0 5px rgba(0,0,0,0.2), /* Ombra esterna leggera */
+        inset 0 0 40px rgba(139, 137, 110, 0.15); /* Ombra interna ingiallita */
+        
+    /* Simulazione bordi strappati o irregolari non facile in pure CSS senza immagini mask, 
+       ma possiamo dare un effetto di carta spessa */
+    /* transform: perspective(1000px) rotateX(2deg); RIMOSSO per evitare conflitti con scroll/pointer events */
+    /* transform-origin: top center; */
+}
+
+/* Scrollbar styling per WebKit (Chrome, Safari) - opzionale per integrarla meglio */
+.paper-tape::-webkit-scrollbar {
+    width: 10px;
+}
+.paper-tape::-webkit-scrollbar-track {
+    background: rgba(0,0,0,0.05); 
+    border-radius: 4px;
+}
+.paper-tape::-webkit-scrollbar-thumb {
+    background: rgba(0,0,0,0.2); 
+    border-radius: 4px;
+}
+.paper-tape::-webkit-scrollbar-thumb:hover {
+    background: rgba(0,0,0,0.3); 
+}
+
+/* Fix per allineamento in basso che non rompe lo scroll: 
+   Il primo elemento spinge giù tutto il contenuto. 
+   Quando c'è overflow, margin-top collassa e lo scroll funziona. */
+.paper-tape > :first-child {
+    margin-top: auto;
+}
+
+.tape-row {
+    display: flex;
+    justify-content: flex-end; /* Allinea tutto a destra di base */
+    border-bottom: none; /* Removed dashed line */
+    padding: 0; /* Removed padding */
+    text-shadow: 1px 1px 2px rgba(42, 42, 42, 0.15); 
+    width: 100%;
+    line-height: 1.1; /* Compact line height */
+}
+
+.tape-symbol {
+    color: #444; /* Standard nero/grigio */
+    font-weight: 700;
+    min-width: 25px; /* Spazio fisso per il simbolo */
+    text-align: right;
+    margin-left: 4px; /* Reduced separation */
+}
+.tape-val {
+    letter-spacing: 0.5px; /* Reduced letter spacing */
+    text-align: right;
+}
+
+/* Modifiche per specifiche layout */
+.tape-row.align-left {
+    justify-content: flex-start; /* Moltiplicazioni/Divisioni a sinistra */
+}
+.tape-row.align-right {
+    justify-content: flex-end; /* Addizioni/Sottrazioni a destra */
+}
+
+/* Colore Rosso per Negativi (simbolo e valore) */
+.tape-row.negative .tape-val,
+.tape-row.negative .tape-symbol {
+    color: #cc0000;
+}
+
+/* Result Row Separation */
+.tape-row.result-row {
+    margin-bottom: 15px; /* Spazio extra dopo il risultato */
+    border-bottom: 2px solid rgba(0,0,0,0.1); /* Linea di chiusura blocco */
+    padding-bottom: 2px;
+}
+.tape-row.result-row .tape-symbol {
+    font-size: 1.2em; /* Simbolo più evidente */
+    color: #000;
+}

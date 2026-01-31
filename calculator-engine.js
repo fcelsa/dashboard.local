@@ -1,0 +1,917 @@
+
+let businessLogic;
+// Support for Node.js
+if (typeof require !== 'undefined') {
+    try {
+        businessLogic = require('./business');
+    } catch (e) { console.warn("Business module not found via require"); }
+}
+// Support for Browser (global)
+if (typeof window !== 'undefined' && window.business) {
+    businessLogic = window.business;
+}
+
+class CalculatorEngine {
+    constructor(settings = {}) {
+        // --- STATE ---
+        this.entries = [];
+        this.currentInput = "0";
+        this.accumulator = 0;
+        this.grandTotal = 0;
+        
+        this.pendingMultDivOp = null;
+        this.multDivOperand = null;
+        this.isReplaying = false; // Flag to prevent history duplication during recalculation
+        
+        // Input State
+        this.isNewSequence = true;
+        this.errorState = false;
+        this.totalPendingState = { 1: false };
+        this.lastOperation = null; // Stores { op: 'x', operand: 10 } for constant calc
+
+        this.lastAddSubValue = null;
+        this.lastAddSubOp = null;
+        this.lastMultDivResult = null;
+        this.awaitingMultDivTotal = false;
+        this.multDivResults = [];
+
+        // Undo/Redo
+        this.undoStack = [];
+        this.redoStack = [];
+
+        // Memory
+        this.memoryRegister = 0;
+        this.memoryStack = [];
+        this.memoryMode = 'algebraic'; // 'algebraic' | 'stack'
+        this.memoryMax = 8;
+
+        // Business Logic State
+        this.taxRate = 22; // Default
+        this.marginPercent = 0;
+        this.awaitingRate = false;
+
+        // Settings (default)
+        this.settings = {
+            roundingMode: 'none',   // none, truncate, up
+            decimals: 2,
+            isFloat: false,
+            accumulateGT: false, // Will be set by switch
+            ...settings
+        };
+        
+        // Callbacks for UI updates (to be assigned by UI)
+        this.onDisplayUpdate = (val) => {};
+        this.onStatusUpdate = (status) => {}; // New: { acc1: bool, acc2: bool, gt: bool, error: bool, minus: bool }
+        this.onTapePrint = (entry) => {};
+        this.onTapeRefresh = (entries) => {}; 
+        this.onError = (msg) => {};
+        this.onMemoryUpdate = (memory) => {};
+    }
+
+    // --- SETTINGS ---
+    updateSettings(newSettings) {
+        this.settings = { ...this.settings, ...newSettings };
+        if (newSettings && typeof newSettings.memoryMode === 'string') {
+            this.memoryMode = newSettings.memoryMode;
+            this._emitMemoryUpdate();
+        }
+    }
+
+    // --- UNDO / REDO ---
+    _snapshotEntries(entries = this.entries) {
+        return entries.map((entry) => ({ ...entry }));
+    }
+
+    _checkpoint() {
+        if (this.isReplaying) return;
+        this.undoStack.push(this._snapshotEntries());
+        if (this.undoStack.length > 200) this.undoStack.shift();
+        this.redoStack = [];
+    }
+
+    _restoreSnapshot(snapshot) {
+        this.entries = this._snapshotEntries(snapshot || []);
+        if (this.onTapeRefresh) {
+            this.onTapeRefresh(this.entries);
+        }
+        this._recalculate();
+    }
+
+    undo() {
+        if (this.undoStack.length === 0) return false;
+        const snapshot = this.undoStack.pop();
+        this.redoStack.push(this._snapshotEntries());
+        this._restoreSnapshot(snapshot);
+        return true;
+    }
+
+    redo() {
+        if (this.redoStack.length === 0) return false;
+        const snapshot = this.redoStack.pop();
+        this.undoStack.push(this._snapshotEntries());
+        this._restoreSnapshot(snapshot);
+        return true;
+    }
+
+    _shouldCheckpoint(key) {
+        const checkpointKeys = new Set([
+            '+', '-', 'x', '÷', '=', 'Enter',
+            'T', 'T1', 'S', 'S1',
+            'RATE', 'TAX+', 'TAX-', 'COST', 'SELL', 'MARGIN',
+            'CLEAR_ALL', 'M+', 'M-', 'MR', 'MC'
+        ]);
+        return checkpointKeys.has(key);
+    }
+
+    _emitMemoryUpdate() {
+        if (!this.onMemoryUpdate) return;
+        const hasStack = this.memoryStack.length > 0;
+        const hasRegister = this.memoryRegister !== 0;
+        this.onMemoryUpdate({
+            mode: this.memoryMode,
+            stack: [...this.memoryStack],
+            memory: this.memoryRegister,
+            hasMemory: this.memoryMode === 'stack' ? hasStack : hasRegister,
+        });
+    }
+    
+    // --- STATUS ---
+    _emitStatus() {
+        if (this.onStatusUpdate) {
+            this.onStatusUpdate({
+                acc1: this.accumulator !== 0,
+                acc2: false,
+                gt: this.grandTotal !== 0,
+                error: this.errorState,
+                minus: parseFloat(this.currentInput) < 0 || (this.currentInput === '0' && this.accumulator < 0 && !this.isNewSequence) // Logic for minus sign? Usually just current displayed number
+            });
+        }
+    }
+    
+    // --- STATE RECALCULATION ---
+    _recalculate() {
+        // 1. Save and Clear
+        const savedEntries = [...this.entries];
+        this.entries = [];
+        
+        // 2. Reset State
+        this.accumulator = 0;
+        this.grandTotal = 0;
+        this.pendingMultDivOp = null;
+        this.multDivOperand = null;
+        this.currentInput = "0";
+        this.isNewSequence = true;
+        this.totalPendingState = { 1: false };
+        this.errorState = false;
+        this.gtPending = false; // New state for GT key
+        this.isReplaying = true;
+        this.lastOperation = null;
+        this.lastAddSubValue = null;
+        this.lastAddSubOp = null;
+        this.lastMultDivResult = null;
+        this.awaitingMultDivTotal = false;
+        this.multDivResults = [];
+
+        try {
+            for (const entry of savedEntries) {
+                if (entry.type === 'input') {
+                    // Logic dispatch
+                    if (['+', '-'].includes(entry.key)) {
+                        this._handleAddSub(entry.key, entry.val); 
+                    } else if (['x', '÷'].includes(entry.key)) {
+                        this._handleMultDiv(entry.key, entry.val);
+                    } else if (entry.key === '=' || entry.key === 'Enter') {
+                        this._handleEqual(entry.val);
+                    } else if (entry.key === 'T' || entry.key === 'T1') {
+                        this._handleTotal(1);
+                    } else if (entry.key === 'S' || entry.key === 'S1') {
+                        this._handleSubTotal(1);
+                    } else if (entry.key === 'GT') {
+                        this._handleGrandTotal();
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("Replay Error", e);
+            this._triggerError("Error Recalc");
+        } finally {
+            this.isReplaying = false;
+            // Restore Display
+            if (this.pendingMultDivOp) {
+                 this.onDisplayUpdate(this._formatResult(this.multDivOperand));
+            } else if (this.accumulator !== 0) {
+                 this.onDisplayUpdate(this._formatResult(this.accumulator));
+            } else {
+                 this.onDisplayUpdate(this.currentInput);
+            }
+        }
+    }
+    
+    // Better Strategy: Recalculate is only needed for Chain Undo.
+    // We already have clean state separation.
+    
+    // Let's implement simpler Replay:
+    // We only need to replay logic for keys that change state.
+    // Helper to dispatch
+    _dispatchInternal(key, val) {
+         if (['+', '-'].includes(key)) this._handleAddSub(key, val);
+         else if (['x', '÷'].includes(key)) this._handleMultDiv(key, val);
+         else if (key === '=') this._handleEqual(val);
+         // Totals are operations that use state, they don't input value usually.
+         // But logic needs them to clear acc.
+         // We'll fix _handleTotal to be replayable.
+    }
+
+    // --- INPUT DISPATCH ---
+    // Main entry point for inputs
+    pressKey(key) {
+        if (this.errorState && key !== 'CLEAR_ALL' && key !== 'CE') return;
+
+        if (this._shouldCheckpoint(key)) {
+            this._checkpoint();
+        }
+
+        // Rate Confirmation Logic
+        if (this.awaitingRate) {
+             const isNumeric = (!isNaN(parseFloat(key)) || key === '00' || key === '000' || key === '.');
+             if (!isNumeric) {
+                 // Confirm Rate
+                 const rateVal = parseFloat(this.currentInput);
+                 if (!isNaN(rateVal)) {
+                     this.taxRate = rateVal;
+                     // Special message or standard update?
+                     // We use display update to show conf.
+                     // We could add a "RATE SET" entry to history?
+                 }
+                 this.awaitingRate = false; 
+                 // Consume current input as rate value
+                 this.currentInput = "0";
+                 this.isNewSequence = true;
+                 this.onDisplayUpdate("RATE " + this.taxRate);
+                 return; // Stop processing this key (it just confirmed rate)
+             }
+        }
+
+        // Numeric Input
+        if (!isNaN(parseFloat(key)) || key === '00' || key === '000') {
+            this._handleNumber(key);
+            return;
+        }
+        if (key === '.') {
+            this._handleDecimal();
+            return;
+        }
+
+        // Operations
+        switch(key) {
+            case '+':
+            case '-':
+                this._handleAddSub(key);
+                break;
+            case 'x':
+            case '÷':
+                this._handleMultDiv(key);
+                break;
+            case '=':
+            case 'Enter':
+                this._handleEqual();
+                break;
+            case 'T':
+            case 'T1':
+                this._handleTotal(1);
+                break;
+            case 'S':
+            case 'S1':
+                this._handleSubTotal(1);
+                break;
+            case 'GT':
+                this._handleGrandTotal();
+                break;
+
+            // Business Keys
+            case 'RATE':
+            case 'TAX+':
+            case 'TAX-':
+            case 'COST':
+            case 'SELL':
+            case 'MARGIN':
+                this._handleBusinessKey(key);
+                break;
+                
+            // Clear handling needs to be coordinated with UI usually, 
+            // but engine state part is here
+            case 'CLEAR_ALL':
+                this._clearAll();
+                break;
+            case 'CE':
+                this._clearEntry();
+                break;
+            case 'BACKSPACE':
+                this._handleBackspace();
+                break;
+            case '±':
+                this._toggleSign();
+                break;
+            case 'M+':
+            case 'M-':
+            case 'MR':
+            case 'MC':
+                this._handleMemoryKey(key);
+                break;
+        }
+    }
+
+    // --- INPUT HANDLERS ---
+    _handleNumber(digits) {
+        // Reset Total Pending State on numeric input
+        this.totalPendingState[1] = false;
+
+        if (this.currentInput === "0" || this.isNewSequence) {
+            this.currentInput = digits;
+            this.isNewSequence = false;
+        } else {
+            if (this.currentInput.replace('.', '').length < 16) {
+                this.currentInput += digits;
+            }
+        }
+        if (!this.isReplaying) this.onDisplayUpdate(this.currentInput);
+    }
+
+    _handleDecimal() {
+        if (this.isNewSequence) {
+            this.currentInput = "0.";
+            this.isNewSequence = false;
+        } else if (!this.currentInput.includes('.')) {
+            this.currentInput += ".";
+        }
+        if (!this.isReplaying) this.onDisplayUpdate(this.currentInput);
+    }
+
+    _handleAddSub(op, explicitVal = null) {
+        // Logic: Print current input with OP, update accumulator
+        let val;
+        if (explicitVal !== null) {
+            val = explicitVal;
+        } else if (this.isNewSequence && this.lastAddSubValue !== null && this.currentInput === "0") {
+            val = this.lastAddSubValue;
+        } else {
+            val = parseFloat(this.currentInput);
+        }
+        if (isNaN(val)) val = 0;
+
+        // Add entry to history
+        this._addHistoryEntry({ val, symbol: op, key: op, type: 'input' });
+
+        if (op === '+') {
+            this.accumulator += val;
+        } else if (op === '-') {
+            this.accumulator -= val;
+        }
+        
+        // Fix precision on accumulator
+        this.accumulator = parseFloat(Number(this.accumulator).toPrecision(15));
+
+        // Display current accumulator (subtotal) or just input?
+        // Standard tape calc: shows result of addition on display? 
+        // Usually yes, running total.
+        if (!this.isReplaying) {
+            this.onDisplayUpdate(this._formatResult(this.accumulator));
+        }
+
+        this.lastAddSubValue = val;
+        this.lastAddSubOp = op;
+        this.awaitingMultDivTotal = false;
+        
+        // Reset input for next number
+        this.currentInput = "0";
+        this.isNewSequence = true;
+    }
+
+    _handleMemoryKey(key) {
+        if (this.memoryMode === 'stack') {
+            this._handleStackMemory(key);
+        } else {
+            this._handleAlgebraicMemory(key);
+        }
+        this._emitMemoryUpdate();
+    }
+
+    _readInputValue() {
+        const val = parseFloat(this.currentInput);
+        return isNaN(val) ? null : val;
+    }
+
+    _handleAlgebraicMemory(key) {
+        const val = this._readInputValue();
+        if (key === 'M+') {
+            if (val !== null) this.memoryRegister += val;
+        } else if (key === 'M-') {
+            if (val !== null) this.memoryRegister -= val;
+        } else if (key === 'MR') {
+            this.currentInput = String(this.memoryRegister);
+            this.isNewSequence = true;
+            if (!this.isReplaying) this.onDisplayUpdate(this.currentInput);
+        } else if (key === 'MC') {
+            this.memoryRegister = 0;
+        }
+    }
+
+    _handleStackMemory(key) {
+        const val = this._readInputValue();
+        if (key === 'M+') {
+            if (val !== null && val !== 0) {
+                if (this.memoryStack.length >= this.memoryMax) {
+                    this.memoryStack.shift();
+                }
+                this.memoryStack.push(val);
+            }
+        } else if (key === 'M-') {
+            if (this.memoryStack.length === 0) return;
+            if (val !== null) {
+                const target = Math.round(val * 1000) / 1000;
+                let idx = -1;
+                for (let i = this.memoryStack.length - 1; i >= 0; i--) {
+                    const candidate = Math.round(this.memoryStack[i] * 1000) / 1000;
+                    if (candidate === target) {
+                        idx = i;
+                        break;
+                    }
+                }
+                if (idx >= 0) {
+                    this.memoryStack.splice(idx, 1);
+                } else {
+                    this.memoryStack.pop();
+                }
+            } else {
+                this.memoryStack.pop();
+            }
+        } else if (key === 'MR') {
+            if (this.memoryStack.length === 0) return;
+            const top = this.memoryStack.pop();
+            this.currentInput = String(top);
+            this.isNewSequence = true;
+            if (!this.isReplaying) this.onDisplayUpdate(this.currentInput);
+        } else if (key === 'MC') {
+            this.memoryStack = [];
+        }
+    }
+
+    _handleMultDiv(op, explicitVal = null) {
+        let val = explicitVal !== null ? explicitVal : parseFloat(this.currentInput);
+        this.awaitingMultDivTotal = false;
+
+        if (this.totalPendingState[1]) {
+            this.totalPendingState[1] = false;
+            this.accumulator = 0;
+            this.lastAddSubValue = null;
+        }
+
+        if (!this.pendingMultDivOp) {
+            this.multDivResults = [];
+        }
+        
+        // --- CHAINING LOGIC ---
+        // If there is already a pending operation (e.g. 10 x 5 x ...), 
+        // we must execute the previous one first.
+        if (this.pendingMultDivOp && !this.isNewSequence) {
+             let interRes = 0;
+             if (this.pendingMultDivOp === 'x') {
+                 interRes = this.multDivOperand * val;
+             } else if (this.pendingMultDivOp === '÷') {
+                 if (val === 0 && !this.isReplaying) { this._triggerError("Error"); return; }
+                 interRes = this.multDivOperand / val;
+             }
+             
+             // Intermediate rounding? Usually yes on tape calcs
+             interRes = this._applyRounding(interRes);
+
+             this.multDivResults.push(interRes);
+             
+             // Let's adopt this: Update multDivOperand to the result.
+             this.multDivOperand = interRes;
+             if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(interRes));
+             
+             // Print the input value with the *previous* requested op? 
+             // Or print just the input with the *new* op?
+             // Standard:
+             // 10 x
+             // 5 x   (Meaning: 5 is factor, x is next op)
+             // Result 50 is kept internal.
+        } else {
+             // First term in chain
+             this.multDivOperand = val;
+        }
+
+        this.pendingMultDivOp = op;
+        this._addHistoryEntry({ val, symbol: op, key: op, type: 'input' });
+        
+        this.currentInput = "0";
+        this.isNewSequence = true;
+    }
+
+    _handleEqual(explicitVal = null) {
+        // Special Case: If T was just pressed, = clears the accumulator
+        if (this.totalPendingState[1]) {
+            this.accumulator = 0;
+            this.totalPendingState[1] = false;
+            this._addHistoryEntry({ val: 0, symbol: '=', key: '=', type: 'input' });
+            this._emitStatus();
+            if (!this.isReplaying) this.onDisplayUpdate("0");
+            return;
+        }
+
+        // --- SCENARIO A: Normal Calculation (A op B =) ---
+        if (this.pendingMultDivOp) {
+            let val = explicitVal !== null ? explicitVal : parseFloat(this.currentInput);
+            
+            // Print second operand
+            this._addHistoryEntry({ val, symbol: '=', key: '=', type: 'input' });
+
+            let res = 0;
+            
+            if (this.pendingMultDivOp === 'x') {
+                res = this.multDivOperand * val;
+            } else if (this.pendingMultDivOp === '÷') {
+                if (val === 0 && !this.isReplaying) {
+                    this._triggerError("Error");
+                    return;
+                }
+                res = this.multDivOperand / val;
+            }
+
+            // Save Constant State (User wants to repeat op with stored operand)
+            // Example: 2.4 x 112 = 268.8
+            // stored: op='x', operand=112 (the second term)
+            this.lastOperation = { op: this.pendingMultDivOp, operand: val };
+
+            res = this._applyRounding(res);
+            
+            // Print result without symbol
+            this._addHistoryEntry({ val: this._formatResult(res), symbol: '', key: '=' }); 
+            if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(res));
+
+            this.lastMultDivResult = res;
+            this.awaitingMultDivTotal = true;
+            this.multDivResults.push(res);
+            
+            this.currentInput = String(res);
+            this.isNewSequence = true; 
+            this.pendingMultDivOp = null;
+            this._emitStatus();
+            
+        }
+        // --- SCENARIO A2: Move last mult/div result to adder via = ---
+        else if (this.awaitingMultDivTotal && this.isNewSequence && this.lastMultDivResult !== null) {
+            const sum = this.multDivResults.length
+                ? this.multDivResults.reduce((acc, value) => acc + value, 0)
+                : this.lastMultDivResult;
+            const total = this._applyRounding(sum);
+
+            this.accumulator = total;
+            this.accumulator = parseFloat(Number(this.accumulator).toPrecision(15));
+            this.currentInput = String(total);
+            this.isNewSequence = true;
+            this.totalPendingState[1] = true;
+
+            this._addHistoryEntry({ val: this._formatResult(total), symbol: '◇', key: 'T1', type: 'result' });
+            if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(total));
+
+            this.awaitingMultDivTotal = false;
+            this.lastMultDivResult = null;
+            this.multDivResults = [];
+            this._emitStatus();
+            return;
+        }
+        // --- SCENARIO B: Add/Sub Total via = ---
+        else if (this.lastAddSubValue !== null || this.accumulator !== 0) {
+            this._handleTotal(1);
+            return;
+        }
+        // --- SCENARIO C: Constant Calculation (C =) ---
+        else if (this.lastOperation) {
+            // Check if we should clear the stack (Double Press of =)
+            // "se viene premuto uan seconda volta... azzera quello stack"
+            
+            if (this.isNewSequence) {
+                // User pressed = immediately after a result. CLEAR STACK.
+                this.lastOperation = null;
+                return;
+            }
+
+            // User typed a new value (e.g. 2.2) and pressed =
+            // Execute: NewVal [op] [StoredOperand]
+            let val = explicitVal !== null ? explicitVal : parseFloat(this.currentInput);
+            
+            // 1. Print input (The new "constant" base)
+            this._addHistoryEntry({ val, symbol: '', key: '=', type: 'input' });
+
+            // 2. Print the Constant Factor being applied (Visual Feed)
+            // Marked as 'info' so Replay doesn't try to processing it as input
+            this._addHistoryEntry({ 
+                val: this.lastOperation.operand, 
+                symbol: this.lastOperation.op, 
+                key: 'CONST', 
+                type: 'info' 
+            });
+
+            let res = 0;
+            if (this.lastOperation.op === 'x') {
+                res = val * this.lastOperation.operand;
+            } else if (this.lastOperation.op === '÷') {
+                if (this.lastOperation.operand === 0 && !this.isReplaying) {
+                     this._triggerError("Error"); return;
+                }
+                res = val / this.lastOperation.operand;
+            }
+
+            res = this._applyRounding(res);
+
+            // Print Result
+            this._addHistoryEntry({ val: this._formatResult(res), symbol: '', key: '=' }); 
+            if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(res));
+
+            this.accumulator += res;
+            this.accumulator = parseFloat(Number(this.accumulator).toPrecision(15));
+            
+            // Logic GT Accumulation (Switch Dependent)
+            if (this.settings.accumulateGT) {
+                this.grandTotal += res;
+                this.grandTotal = parseFloat(Number(this.grandTotal).toPrecision(15));
+            }
+
+            this.currentInput = String(res);
+            this.isNewSequence = true;
+            this._emitStatus();
+            
+            // Do NOT clear lastOperation. User can chain multiple constants: 2.2 =, 3.5 =, etc.
+            
+        }
+        else {
+            // No pending op, No constant.
+            if (this.lastAddSubValue !== null || this.accumulator !== 0) {
+                this._handleTotal(1);
+                return;
+            }
+            // If we just finished a sequence (e.g. just printed a result), do NOT repeat print.
+            if (this.isNewSequence) return;
+        }
+    }
+
+    _toggleSign() {
+        if (this.isNewSequence && this.currentInput === "0") return;
+        const val = parseFloat(this.currentInput);
+        if (isNaN(val) || val === 0) {
+            this.currentInput = "0";
+        } else {
+            this.currentInput = String(-val);
+        }
+        this.isNewSequence = false;
+        if (!this.isReplaying) this.onDisplayUpdate(this.currentInput);
+    }
+
+    _handleTotal(accIndex = 1) {
+        // GT Logic Override (If GT key was pressed before T)
+        // Only trigger special GT behavior if ACC switch is active? 
+        // User says: "se, e solo se lo switch ACC è su on la logica prevede un accumulatore speciale... quindi questo tasto va premuto prima..."
+        // This implies the KEY works this way if SWITCH is ON. 
+        // If Switch is OFF, maybe GT key does nothing?
+        // Let's assume switch controls accumulation, but key logic is always available to read the register if something is there.
+        if (this.gtPending && accIndex === 1) { 
+            this.gtPending = false;
+            // Print GT Total (GT*) e Clear
+            let val = this.grandTotal;
+            val = this._applyRounding(val);
+            
+            // Format symbol usually GT* for Total
+            this._addHistoryEntry({ val: this._formatResult(val), symbol: 'GT*', key: 'GT', type: 'input' }); 
+            if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(val));
+            
+            // Clear GT
+            this.grandTotal = 0;
+            this.currentInput = String(val);
+            this.isNewSequence = true;
+            this._emitStatus();
+            return;
+        }
+
+        // Acc 1
+        let val = this.accumulator;
+        val = this._applyRounding(val);
+        
+        // Logic:
+        // 1st press: Print Total (looks like Total), do NOT clear. Set Pending State.
+        // 2nd press (or if Pending State is true): Print Total (Symbol *), Clear Accumulator, Add to GT.
+        
+        const isSecondPress = this.totalPendingState[accIndex];
+        
+        // Symbol: User interface usually distinguishes S (diamond) vs T (*). 
+        // But requested logic is "First T prints result... only second T clears".
+        // Let's use 'S' symbol for first press (Subtotal concept) and '*' for second (Total).
+        const sym = (isSecondPress ? '*' : '◇');
+        
+        // Tag as input so it replays (clears accumulators correctly)
+        this._addHistoryEntry({ val: this._formatResult(val), symbol: sym, key: 'T' + accIndex, type: 'input' });
+        if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(val));
+        
+        if (isSecondPress) {
+            // Finalize: Clear & Add to GT
+            if (this.settings.accumulateGT) {
+                this.grandTotal += val;
+                this.grandTotal = parseFloat(Number(this.grandTotal).toPrecision(15));
+            }
+            this.accumulator = 0;
+            // Reset state
+            this.totalPendingState[accIndex] = false;
+        } else {
+            // First press: Hold state
+            this.totalPendingState[accIndex] = true;
+        }
+        
+        // "questo risultato ... sarà il primo operando"
+        // We ensure currentInput holds the total value so it can be picked up by next op.
+        this.currentInput = String(val);
+        this.isNewSequence = true;
+        this._emitStatus();
+    }
+    
+    _handleSubTotal(accIndex = 1) {
+        // GT Logic Override (If GT key was pressed before S)
+        if (this.gtPending && accIndex === 1) {
+             this.gtPending = false;
+             // Print GT Subtotal (GT) - No Clear
+             let val = this.grandTotal;
+             val = this._applyRounding(val);
+             
+             this._addHistoryEntry({ val: this._formatResult(val), symbol: 'GT', key: 'GT', type: 'input' });
+             if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(val));
+             
+             this.currentInput = String(val);
+             this.isNewSequence = true;
+             // Do NOT clear GT
+             this._emitStatus();
+             return;
+        }
+
+        let val = this.accumulator;
+        val = this._applyRounding(val);
+        
+        const sym = '◇';
+        
+        this._addHistoryEntry({ val: this._formatResult(val), symbol: sym, key: 'S' + accIndex, type: 'input' });
+        if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(val));
+        
+        // Do NOT clear accumulator
+        this.currentInput = "0";
+        this.isNewSequence = true;
+    }
+    
+    _handleGrandTotal() {
+        // Toggle GT Pending State
+        this.gtPending = true;
+    }
+
+    _handleBackspace() {
+          // If we are editing a number, standard backspace
+          if (!this.isNewSequence && this.currentInput !== "0") {
+             if (this.currentInput.length > 1) {
+                this.currentInput = this.currentInput.slice(0, -1);
+             } else {
+                this.currentInput = "0";
+             }
+             if (!this.isReplaying) this.onDisplayUpdate(this.currentInput);
+             return;
+        }
+
+        // Undo the last committed operation in the chain
+        this.undo();
+    }
+
+    // --- CLEAR / EDIT ---
+    _clearAll() {
+        this.accumulator = 0;
+        this.grandTotal = 0;
+        this.currentInput = "0";
+        this.pendingMultDivOp = null;
+        this.errorState = false;
+        this.lastAddSubValue = null;
+        this.lastAddSubOp = null;
+        this.lastMultDivResult = null;
+        this.awaitingMultDivTotal = false;
+        this.multDivResults = [];
+        
+        this.entries = []; // Clear history
+        
+        // Notify UI
+        this.onDisplayUpdate("0");
+        if (this.onTapeRefresh) this.onTapeRefresh([]);
+        this.onTapePrint({ val: 0, symbol: "C", key: "C", type: "input" });
+        this._emitStatus();
+    }
+
+    _clearEntry() {
+        this.currentInput = "0";
+        this.onDisplayUpdate("0");
+    }
+
+    // --- BUSINESS KEYS ---
+    _handleBusinessKey(key) {
+        if (!businessLogic) {
+            console.warn("Business Logic not not loaded"); 
+            return;
+        }
+
+        if (key === 'RATE') {
+            this.awaitingRate = true;
+            this.onDisplayUpdate("RATE");
+            // Clear input so user types fresh rate?
+            this.currentInput = "0";
+            this.isNewSequence = true;
+            return;
+        }
+
+        // For other keys, we need a numeric input
+        let val = parseFloat(this.currentInput);
+        if (isNaN(val)) {
+            this._triggerError("Error");
+            return;
+        }
+
+        try {
+            let res;
+            if (key === 'MARGIN') {
+                // Store margin
+                this.marginPercent = val;
+                this._addHistoryEntry({ val, symbol: 'MG%', key: 'MARGIN' });
+                this.onDisplayUpdate(String(val));
+                this.currentInput = "0"; // Reset or keep? Usually reset after function
+                this.isNewSequence = true;
+                return;
+            }
+
+            // Calculations
+            if (key === 'TAX+') res = businessLogic.addTax(val, this.taxRate);
+            else if (key === 'TAX-') res = businessLogic.removeTax(val, this.taxRate);
+            else if (key === 'COST') res = businessLogic.computeCost(val, this.marginPercent);
+            else if (key === 'SELL') res = businessLogic.computeSell(val, this.marginPercent);
+            
+            // Apply Rounding
+            if (res !== undefined) {
+                res = this._applyRounding(res);
+                this._addHistoryEntry({ val: res, symbol: key, key: key });
+                this.onDisplayUpdate(String(res));
+                this.currentInput = String(res);
+                this.isNewSequence = true;
+            }
+
+        } catch (e) {
+            this._triggerError("Error"); // DivisionByZero etc
+        }
+    }
+
+    // --- FORMATTING / MATH ---
+    _applyRounding(val) {
+        // First fix tiny floating point errors (e.g. 2.2+2.2+2.2 = 6.6000000000000005)
+        val = parseFloat(Number(val).toPrecision(15));
+        
+        if (this.settings.isFloat) return val;
+        // Delegate to business logic if available, else simple
+        if (businessLogic && businessLogic.applyRounding) {
+            return businessLogic.applyRounding(val, this.settings.roundingMode, this.settings.decimals);
+        }
+        return val;
+    }
+
+    _formatResult(val) {
+        if (this.settings.isFloat) return String(val);
+        // Force fixed decimals string representation
+        return Number(val).toFixed(this.settings.decimals);
+    }
+
+    // --- HISTORY / TAPE ---
+    _addHistoryEntry(entry) {
+        // Enforce validations
+        if (entry.val === undefined || isNaN(entry.val)) return;
+        
+        // Enrich entry
+        if (!entry.timestamp) entry.timestamp = Date.now();
+        this.entries.push(entry);
+        
+        if (!this.isReplaying) {
+            this.onTapePrint(entry);
+        }
+    }
+    
+    // --- ERROR ---
+    _triggerError(msg) {
+        this.errorState = true;
+        this.onError(msg);
+        this.onDisplayUpdate(msg);
+    }
+}
+
+// Support for both Node (tests) and Browser
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = CalculatorEngine;
+} else {
+    window.CalculatorEngine = CalculatorEngine;
+}
