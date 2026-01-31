@@ -323,6 +323,12 @@ class CalculatorEngine {
 
     // --- INPUT HANDLERS ---
     _handleNumber(digits) {
+        // Se stavamo attendendo un totale da catena mult/div e l'utente riprende a digitare, azzera lo stato catena
+        if (this.awaitingMultDivTotal && this.isNewSequence && !this.pendingMultDivOp) {
+            this.awaitingMultDivTotal = false;
+            this.lastMultDivResult = null;
+            this.multDivResults = [];
+        }
         // Reset Total Pending State on numeric input
         this.totalPendingState[1] = false;
 
@@ -338,6 +344,11 @@ class CalculatorEngine {
     }
 
     _handleDecimal() {
+        if (this.awaitingMultDivTotal && this.isNewSequence && !this.pendingMultDivOp) {
+            this.awaitingMultDivTotal = false;
+            this.lastMultDivResult = null;
+            this.multDivResults = [];
+        }
         if (this.isNewSequence) {
             this.currentInput = "0.";
             this.isNewSequence = false;
@@ -348,6 +359,12 @@ class CalculatorEngine {
     }
 
     _handleAddSub(op, explicitVal = null) {
+        // Uscendo dalla catena mult/div, azzera il suo stato
+        this.awaitingMultDivTotal = false;
+        this.lastMultDivResult = null;
+        this.multDivResults = [];
+        this.pendingMultDivOp = null;
+
         // Logic: Print current input with OP, update accumulator
         let val;
         if (explicitVal !== null) {
@@ -466,9 +483,6 @@ class CalculatorEngine {
             this.lastAddSubValue = null;
         }
 
-        if (!this.pendingMultDivOp) {
-            this.multDivResults = [];
-        }
         
         // --- CHAINING LOGIC ---
         // If there is already a pending operation (e.g. 10 x 5 x ...), 
@@ -553,6 +567,15 @@ class CalculatorEngine {
             this.lastMultDivResult = res;
             this.awaitingMultDivTotal = true;
             this.multDivResults.push(res);
+
+            const subtotal = this.multDivResults.reduce((acc, value) => acc + value, 0);
+            const roundedSubtotal = this._applyRounding(subtotal);
+            this._addHistoryEntry({
+                val: this._formatResult(roundedSubtotal),
+                symbol: 'S',
+                key: 'S',
+                type: 'result'
+            });
             
             this.currentInput = String(res);
             this.isNewSequence = true; 
@@ -573,7 +596,7 @@ class CalculatorEngine {
             this.isNewSequence = true;
             this.totalPendingState[1] = true;
 
-            this._addHistoryEntry({ val: this._formatResult(total), symbol: '◇', key: 'T1', type: 'result' });
+            this._addHistoryEntry({ val: this._formatResult(total), symbol: 'T', key: 'T', type: 'result' });
             if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(total));
 
             this.awaitingMultDivTotal = false;
@@ -670,6 +693,12 @@ class CalculatorEngine {
     }
 
     _handleTotal(accIndex = 1) {
+        // Chiusura catena mult/div: azzera stato catena
+        this.awaitingMultDivTotal = false;
+        this.lastMultDivResult = null;
+        this.multDivResults = [];
+        this.pendingMultDivOp = null;
+
         // GT Logic Override (If GT key was pressed before T)
         // Only trigger special GT behavior if ACC switch is active? 
         // User says: "se, e solo se lo switch ACC è su on la logica prevede un accumulatore speciale... quindi questo tasto va premuto prima..."
@@ -735,6 +764,11 @@ class CalculatorEngine {
     }
     
     _handleSubTotal(accIndex = 1) {
+        this.awaitingMultDivTotal = false;
+        this.lastMultDivResult = null;
+        this.multDivResults = [];
+        this.pendingMultDivOp = null;
+
         // GT Logic Override (If GT key was pressed before S)
         if (this.gtPending && accIndex === 1) {
              this.gtPending = false;

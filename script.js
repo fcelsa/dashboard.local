@@ -11,12 +11,20 @@ const fxChartEl = document.getElementById("fx-chart");
 const fxMiniChartEl = document.getElementById("fx-mini-chart");
 const fxStatusEl = document.getElementById("fx-status");
 const fxCardEl = document.querySelector(".fx-card");
+const settingsToggleBtn = document.getElementById("settings-toggle");
+const settingsPanelEl = document.getElementById("settings-panel");
+const calculatorPanelEl = document.getElementById("calculator-panel");
+const fxKeyForm = document.getElementById("fx-key-form");
+const fxKeyInput = document.getElementById("freecurrency-key");
+const fxKeyStatus = document.getElementById("fx-key-status");
+const fxKeyClearBtn = document.getElementById("clear-freecurrency-key");
 
 let fxHistory = null;
 let fxChartSize = { width: 0, height: 0 };
 let fxMiniSize = { width: 0, height: 0 };
 let freeCurrencyKey = null;
 const fxSessionKey = "fxLatestSession";
+const freeCurrencyCookieKey = "freeCurrencyApiKey";
 // API keys are read from `api-keys` or environment/window variables at runtime
 
 // No hardcoded API keys: prefer `api-keys`, then localStorage/window.
@@ -323,6 +331,43 @@ function setCookie(name, value, maxAgeSeconds = 3600) {
   document.cookie = `${name}=${encodeURIComponent(value)}; max-age=${maxAgeSeconds}; path=/`;
 }
 
+function deleteCookie(name) {
+  document.cookie = `${name}=; max-age=0; path=/`;
+}
+
+function getFreeCurrencyCookieKey() {
+  const key = getCookie(freeCurrencyCookieKey);
+  return key ? key.trim() : null;
+}
+
+function setFreeCurrencyCookieKey(key) {
+  if (!key) return;
+  const oneYear = 60 * 60 * 24 * 365;
+  setCookie(freeCurrencyCookieKey, key, oneYear);
+}
+
+function clearFreeCurrencyCookieKey() {
+  deleteCookie(freeCurrencyCookieKey);
+}
+
+function maskApiKey(key) {
+  if (!key) return "";
+  if (key.length <= 8) return "•".repeat(key.length);
+  const head = key.slice(0, 4);
+  const tail = key.slice(-4);
+  return `${head}••••${tail}`;
+}
+
+function updateFxKeyStatus() {
+  if (!fxKeyStatus) return;
+  const stored = getFreeCurrencyCookieKey();
+  if (stored) {
+    fxKeyStatus.textContent = `Chiave salvata: ${maskApiKey(stored)}`;
+  } else {
+    fxKeyStatus.textContent = "Nessuna chiave salvata.";
+  }
+}
+
 function getCachedSessionRate() {
   const raw = getCookie(fxSessionKey);
   if (!raw) return null;
@@ -386,6 +431,12 @@ async function loadFreeCurrencyKey() {
 // Generic loader for API keys stored in the `api-keys` file or provided via window/localStorage.
 async function loadApiKey(domain) {
   try {
+    // Cookie override (per-user)
+    if (domain.toLowerCase().includes("freecurrency")) {
+      const cookieKey = getFreeCurrencyCookieKey();
+      if (cookieKey) return cookieKey;
+    }
+
     // First try reading api-keys file (preferred on localhost/http(s))
     try {
       const resp = await fetch('api-keys');
@@ -867,6 +918,47 @@ function initDashboard() {
       analogClock.setAttribute("aria-hidden", isAnalog ? "false" : "true");
     });
   }
+
+  if (settingsToggleBtn) {
+    settingsToggleBtn.addEventListener("click", () => {
+      const isOpen = document.body.classList.toggle("show-settings");
+      if (settingsPanelEl) {
+        settingsPanelEl.setAttribute("aria-hidden", isOpen ? "false" : "true");
+      }
+      if (calculatorPanelEl) {
+        calculatorPanelEl.setAttribute("aria-hidden", isOpen ? "true" : "false");
+      }
+      settingsToggleBtn.setAttribute(
+        "aria-label",
+        isOpen ? "Chiudi impostazioni" : "Apri impostazioni"
+      );
+    });
+  }
+
+  if (fxKeyForm) {
+    fxKeyForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const value = fxKeyInput?.value?.trim();
+      if (!value) {
+        if (fxKeyStatus) fxKeyStatus.textContent = "Inserisci una chiave valida.";
+        return;
+      }
+      setFreeCurrencyCookieKey(value);
+      freeCurrencyKey = value;
+      if (fxKeyInput) fxKeyInput.value = "";
+      updateFxKeyStatus();
+    });
+  }
+
+  if (fxKeyClearBtn) {
+    fxKeyClearBtn.addEventListener("click", () => {
+      clearFreeCurrencyCookieKey();
+      freeCurrencyKey = null;
+      updateFxKeyStatus();
+    });
+  }
+
+  updateFxKeyStatus();
 }
 
 initDashboard();

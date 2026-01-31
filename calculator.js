@@ -2,6 +2,7 @@ document.addEventListener("DOMContentLoaded", () => {
   try {
         // --- DOM ---
     const vfdDisplay = document.getElementById("vfd-display");
+    const vfdDisplayWrap = document.querySelector(".vfd-display");
     const vfdStack = document.getElementById("vfd-stack");
     const paperTape = document.getElementById("paper-tape");
     const keys = document.querySelectorAll(".key-btn");
@@ -87,6 +88,9 @@ document.addEventListener("DOMContentLoaded", () => {
     let textModeBuffer = ""; 
     let lastCETime = 0;
     let errorState = false;
+    let vfdOffTimeout = null;
+    let paperResetTimeout = null;
+    let suppressClearPrint = false;
 
     // --- ENGINE ---
     // Ensure CalculatorEngine is loaded
@@ -104,6 +108,9 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     engine.onTapePrint = (entry) => {
+        if (suppressClearPrint && entry?.symbol === "C" && entry?.key === "C") {
+            return;
+        }
         renderSingleEntry(entry);
     };
 
@@ -197,7 +204,7 @@ document.addEventListener("DOMContentLoaded", () => {
              If key is x, ÷, = OR symbol is =, align LEFT.
              CONST entry has key='CONST'.
         */
-        if (entry.symbol === '◇') {
+        if (entry.symbol === '◇' || entry.symbol === 'S' || entry.symbol === 'T') {
             row.classList.add("align-right");
         } else if (['x', '÷', '=', 'CONST'].includes(entry.key) || entry.symbol === '=') {
             row.classList.add("align-left");
@@ -233,6 +240,9 @@ document.addEventListener("DOMContentLoaded", () => {
         const symSpan = document.createElement("span");
         symSpan.className = "tape-symbol";
         symSpan.textContent = entry.symbol || "";
+        if (entry.symbol === 'S' || entry.symbol === 'T') {
+            symSpan.classList.add("tape-symbol-small");
+        }
 
         row.appendChild(valSpan);
         row.appendChild(symSpan);
@@ -244,6 +254,37 @@ document.addEventListener("DOMContentLoaded", () => {
     // Clear Tape UI
     function clearTapeUI() {
         if (paperTape) paperTape.innerHTML = "";
+    }
+
+    function isTapeAtZeroClear() {
+        if (!paperTape) return false;
+        const lastRow = paperTape.querySelector(".tape-row:last-child");
+        if (!lastRow) return false;
+        const valText = lastRow.querySelector(".tape-val")?.textContent?.trim();
+        const symText = lastRow.querySelector(".tape-symbol")?.textContent?.trim();
+        return valText === "0" && symText === "C";
+    }
+
+    function triggerClearFeedback(forcePaperReset) {
+        if (vfdDisplayWrap) {
+            vfdDisplayWrap.classList.add("is-off");
+            if (vfdOffTimeout) clearTimeout(vfdOffTimeout);
+            vfdOffTimeout = setTimeout(() => {
+                vfdDisplayWrap.classList.remove("is-off");
+            }, 800);
+        }
+
+        if (forcePaperReset) {
+            suppressClearPrint = true;
+            clearTapeUI();
+            if (paperResetTimeout) clearTimeout(paperResetTimeout);
+            paperResetTimeout = setTimeout(() => {
+                suppressClearPrint = false;
+                renderSingleEntry({ val: 0, symbol: "C", key: "C", type: "input" });
+            }, 500);
+        } else {
+            suppressClearPrint = false;
+        }
     }
 
     // --- UTILS ---
@@ -313,10 +354,7 @@ document.addEventListener("DOMContentLoaded", () => {
                  engineKey = 'CE';
                  lastCETime = now;
              }
-        } else if (key === 'C') {
-             // Backup map for direct Clear All
-             engineKey = 'CLEAR_ALL';
-        }
+           }
 
         return engineKey;
     }
@@ -341,6 +379,11 @@ document.addEventListener("DOMContentLoaded", () => {
         // (Adjustments for labels vs Engine expectations)
         const engineKey = applyUiSpecialCases(key);
 
+        if (engineKey === "CLEAR_ALL") {
+            const forcePaperReset = isTapeAtZeroClear();
+            triggerClearFeedback(forcePaperReset);
+        }
+
         // --- DISPATCH TO ENGINE ---
         engine.pressKey(engineKey);
     }
@@ -356,7 +399,6 @@ document.addEventListener("DOMContentLoaded", () => {
         if (key === 'Backspace') return 'BACKSPACE';
         if (key === 'Delete') return 'CLEAR_ALL';
         if (key === 'Escape') return 'CE';
-        if (key.toLowerCase() === 'c') return 'CLEAR_ALL';
         if (key.toLowerCase() === 't') return 'T1';
         if (key.toLowerCase() === 'i') return 'S1';
         if (key.toLowerCase() === 'g') return 'GT';

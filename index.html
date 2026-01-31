@@ -8,6 +8,9 @@
   <link rel="stylesheet" href="calculator.css" />
 </head>
 <body>
+  <button class="settings-toggle" id="settings-toggle" aria-label="Apri impostazioni" type="button">
+    <span aria-hidden="true">⚙</span>
+  </button>
   <div class="app">
     <aside class="left-column">
       <section class="panel calendar-panel">
@@ -73,7 +76,7 @@
         </div>
       </section>
 
-      <section class="panel calculator-panel">
+      <section class="panel calculator-panel" id="calculator-panel">
         <header class="panel-header">
           <p>Calcolatrice Olivetti Logos replica</p>
         </header>
@@ -180,7 +183,7 @@
 
               <!-- Blocco 2: Numerico (Centrale) -->
               <div class="key-block block-center">
-                <button class="key-btn key-round" data-key="CE" title="Cancella / Tutto (Tasto: Canc/Esc)">CE</button>
+                <button class="key-btn key-round" data-key="CE" title="Cancella/Azzeramento">CE</button>
                 <button class="key-btn key-round" data-key="7">7</button>
                 <button class="key-btn key-round" data-key="8">8</button>
                 <button class="key-btn key-round" data-key="9">9</button>
@@ -232,6 +235,41 @@
             <div class="paper-tape" id="paper-tape">
               <!-- JS will append rows here -->
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel settings-panel" id="settings-panel" aria-hidden="true">
+        <header class="panel-header">
+          <h2>Impostazioni</h2>
+          <p class="hint">Preferenze dashboard e chiavi API</p>
+        </header>
+        <div class="settings-content">
+          <div class="settings-group">
+            <h3>API FX (FreeCurrencyAPI)</h3>
+            <p class="hint">
+              Inserisci la tua chiave personale per api.freecurrencyapi.com.
+              Verrà salvata nel browser (cookie).
+            </p>
+            <form class="settings-form" id="fx-key-form" autocomplete="off">
+              <label class="settings-label" for="freecurrency-key">API Key</label>
+              <div class="settings-row">
+                <input
+                  class="settings-input"
+                  id="freecurrency-key"
+                  name="freecurrency-key"
+                  type="password"
+                  placeholder="Incolla qui la tua API key"
+                  spellcheck="false"
+                  inputmode="text"
+                />
+                <button class="settings-btn primary" type="submit">Salva</button>
+                <button class="settings-btn" type="button" id="clear-freecurrency-key">
+                  Rimuovi
+                </button>
+              </div>
+              <p class="settings-status" id="fx-key-status">Nessuna chiave salvata.</p>
+            </form>
           </div>
         </div>
       </section>
