@@ -7,6 +7,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const paperTape = document.getElementById("paper-tape");
     const keys = document.querySelectorAll(".key-btn");
     const iconMem = document.getElementById("icon-mem");
+    const keyButtonsMap = new Map();
     
     // Switch Elements
     const switchRO = document.getElementById("switch-ro");
@@ -91,6 +92,8 @@ document.addEventListener("DOMContentLoaded", () => {
     let vfdOffTimeout = null;
     let paperResetTimeout = null;
     let suppressClearPrint = false;
+    let pendingMemoryChord = false;
+    let pendingMemoryTimeout = null;
 
     // --- ENGINE ---
     // Ensure CalculatorEngine is loaded
@@ -184,6 +187,20 @@ document.addEventListener("DOMContentLoaded", () => {
     updateEngineSettings();
 
     // --- TAPE VIEW ---
+    keys.forEach((btn) => {
+        const dataKey = btn.getAttribute("data-key");
+        if (!dataKey) return;
+        if (!keyButtonsMap.has(dataKey)) keyButtonsMap.set(dataKey, []);
+        keyButtonsMap.get(dataKey).push(btn);
+    });
+
+    function setKeyActive(action, active) {
+        if (!action) return;
+        const buttons = keyButtonsMap.get(action);
+        if (!buttons) return;
+        buttons.forEach((btn) => btn.classList.toggle("active", active));
+    }
+
     // Appends a single entry to the existing DOM tape
     function renderSingleEntry(entry) {
         if (!paperTape) return;
@@ -246,6 +263,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
         row.appendChild(valSpan);
         row.appendChild(symSpan);
+
+        if (typeof entry.percentValue !== "undefined") {
+            const percentSpan = document.createElement("span");
+            percentSpan.className = "tape-percent";
+            const formatted = formatNumber(entry.percentValue);
+            percentSpan.textContent = ` | ${formatted}`;
+            row.appendChild(percentSpan);
+        }
         paperTape.appendChild(row);
         
         paperTape.scrollTop = paperTape.scrollHeight;
@@ -388,16 +413,23 @@ document.addEventListener("DOMContentLoaded", () => {
         engine.pressKey(engineKey);
     }
 
-    function mapKeyboardToAction(key) {
+    function mapKeyboardToAction(eventOrKey) {
+        const key = typeof eventOrKey === "string" ? eventOrKey : eventOrKey.key;
+        const isEvent = typeof eventOrKey !== "string";
+        if (isEvent && key === '0') {
+            if (eventOrKey.ctrlKey) return '00';
+            if (eventOrKey.altKey) return '000';
+        }
         if (key >= '0' && key <= '9') return key;
         if (key === '.' || key === ',') return '.';
         if (key === '+') return '+';
         if (key === '-') return '-';
+        if (key === '%') return '%';
         if (key === '*' || key.toLowerCase() === 'x') return 'x';
         if (key === '/') return '÷';
         if (key === 'Enter' || key === '=') return '=';
         if (key === 'Backspace') return 'BACKSPACE';
-        if (key === 'Delete') return 'CLEAR_ALL';
+        if (key === 'Delete') return 'CE';
         if (key === 'Escape') return 'CE';
         if (key.toLowerCase() === 't') return 'T1';
         if (key.toLowerCase() === 'i') return 'S1';
@@ -417,6 +449,74 @@ document.addEventListener("DOMContentLoaded", () => {
         const isUndoCombo = (event.metaKey || event.ctrlKey) && !event.altKey && keyLower === 'z';
         const isRedoCombo = event.ctrlKey && !event.metaKey && !event.altKey && keyLower === 'y';
         const isSignToggle = (event.key === '-' && event.shiftKey) || event.key === '_';
+
+        if (pendingMemoryChord) {
+            if (keyLower === '+') {
+                event.preventDefault();
+                pendingMemoryChord = false;
+                if (pendingMemoryTimeout) clearTimeout(pendingMemoryTimeout);
+                pendingMemoryTimeout = null;
+                if (iconMem) iconMem.classList.remove("mem-pending");
+                setKeyActive('M+', true);
+                handleInput('M+', true);
+                setTimeout(() => setKeyActive('M+', false), 80);
+                return;
+            }
+            if (keyLower === '-') {
+                event.preventDefault();
+                pendingMemoryChord = false;
+                if (pendingMemoryTimeout) clearTimeout(pendingMemoryTimeout);
+                pendingMemoryTimeout = null;
+                if (iconMem) iconMem.classList.remove("mem-pending");
+                setKeyActive('M-', true);
+                handleInput('M-', true);
+                setTimeout(() => setKeyActive('M-', false), 80);
+                return;
+            }
+            if (keyLower === 'r') {
+                event.preventDefault();
+                pendingMemoryChord = false;
+                if (pendingMemoryTimeout) clearTimeout(pendingMemoryTimeout);
+                pendingMemoryTimeout = null;
+                if (iconMem) iconMem.classList.remove("mem-pending");
+                setKeyActive('MR', true);
+                handleInput('MR', true);
+                setTimeout(() => setKeyActive('MR', false), 80);
+                return;
+            }
+            if (keyLower === 'c') {
+                event.preventDefault();
+                pendingMemoryChord = false;
+                if (pendingMemoryTimeout) clearTimeout(pendingMemoryTimeout);
+                pendingMemoryTimeout = null;
+                if (iconMem) iconMem.classList.remove("mem-pending");
+                setKeyActive('MC', true);
+                handleInput('MC', true);
+                setTimeout(() => setKeyActive('MC', false), 80);
+                return;
+            }
+
+            // Qualsiasi altra combinazione annulla senza effetti
+            pendingMemoryChord = false;
+            if (pendingMemoryTimeout) clearTimeout(pendingMemoryTimeout);
+            pendingMemoryTimeout = null;
+            if (iconMem) iconMem.classList.remove("mem-pending");
+            event.preventDefault();
+            return;
+        }
+
+        if (keyLower === 'm') {
+            pendingMemoryChord = true;
+            if (pendingMemoryTimeout) clearTimeout(pendingMemoryTimeout);
+            pendingMemoryTimeout = setTimeout(() => {
+                pendingMemoryChord = false;
+                pendingMemoryTimeout = null;
+                if (iconMem) iconMem.classList.remove("mem-pending");
+            }, 5000);
+            if (iconMem) iconMem.classList.add("mem-pending");
+            event.preventDefault();
+            return;
+        }
 
         if (isUndoCombo) {
             event.preventDefault();
@@ -440,11 +540,20 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        const action = mapKeyboardToAction(event.key);
+        const action = mapKeyboardToAction(event);
         if (event.key === 'Enter' || event.key === '=') {
             event.preventDefault();
         }
+        if (event.key === '0' && (event.ctrlKey || event.altKey)) {
+            event.preventDefault();
+        }
+        setKeyActive(action, true);
         if (action) handleInput(action, true);
+    }
+
+    function handleKeyboardUp(event) {
+        const action = mapKeyboardToAction(event);
+        setKeyActive(action, false);
     }
 
     // 1. Mouse Click (Virtual Keys)
@@ -454,8 +563,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // 2. Keyboard Input
     document.addEventListener("keydown", handleKeyboard);
-
-  } catch (err) {
-      console.error("Main initialization error:", err);
-  }
+    document.addEventListener("keyup", handleKeyboardUp);
+    } catch (err) {
+        console.error("Main initialization error:", err);
+    }
 });

@@ -33,7 +33,9 @@ class CalculatorEngine {
         this.lastAddSubOp = null;
         this.lastMultDivResult = null;
         this.awaitingMultDivTotal = false;
+        this.multDivTotalPendingClear = false;
         this.multDivResults = [];
+        this.gtPending = false;
 
         // Undo/Redo
         this.undoStack = [];
@@ -116,7 +118,7 @@ class CalculatorEngine {
     _shouldCheckpoint(key) {
         const checkpointKeys = new Set([
             '+', '-', 'x', '÷', '=', 'Enter',
-            'T', 'T1', 'S', 'S1',
+            'T', 'T1', 'S', 'S1', '%',
             'RATE', 'TAX+', 'TAX-', 'COST', 'SELL', 'MARGIN',
             'CLEAR_ALL', 'M+', 'M-', 'MR', 'MC'
         ]);
@@ -171,6 +173,7 @@ class CalculatorEngine {
         this.lastMultDivResult = null;
         this.awaitingMultDivTotal = false;
         this.multDivResults = [];
+        this.multDivTotalPendingClear = false;
 
         try {
             for (const entry of savedEntries) {
@@ -284,6 +287,9 @@ class CalculatorEngine {
             case 'S1':
                 this._handleSubTotal(1);
                 break;
+            case '%':
+                this._handlePercent();
+                break;
             case 'GT':
                 this._handleGrandTotal();
                 break;
@@ -328,6 +334,7 @@ class CalculatorEngine {
             this.awaitingMultDivTotal = false;
             this.lastMultDivResult = null;
             this.multDivResults = [];
+            this.multDivTotalPendingClear = false;
         }
         // Reset Total Pending State on numeric input
         this.totalPendingState[1] = false;
@@ -348,6 +355,7 @@ class CalculatorEngine {
             this.awaitingMultDivTotal = false;
             this.lastMultDivResult = null;
             this.multDivResults = [];
+            this.multDivTotalPendingClear = false;
         }
         if (this.isNewSequence) {
             this.currentInput = "0.";
@@ -364,6 +372,7 @@ class CalculatorEngine {
         this.lastMultDivResult = null;
         this.multDivResults = [];
         this.pendingMultDivOp = null;
+        this.multDivTotalPendingClear = false;
 
         // Logic: Print current input with OP, update accumulator
         let val;
@@ -483,6 +492,10 @@ class CalculatorEngine {
             this.lastAddSubValue = null;
         }
 
+        // Nuova catena: reset elenco risultati
+        if (!this.pendingMultDivOp) {
+            this.multDivResults = [];
+        }
         
         // --- CHAINING LOGIC ---
         // If there is already a pending operation (e.g. 10 x 5 x ...), 
@@ -523,6 +536,77 @@ class CalculatorEngine {
         this.isNewSequence = true;
     }
 
+    _handlePercent() {
+        const val = parseFloat(this.currentInput);
+        if (isNaN(val)) return;
+
+        // Caso A: percentuale su addizione/sottrazione
+        if (this.lastAddSubOp && !this.pendingMultDivOp) {
+            const base = this.accumulator;
+            const percentValue = this._applyRounding(base * (val / 100));
+            let res = base;
+            if (this.lastAddSubOp === '+') res = base + percentValue;
+            if (this.lastAddSubOp === '-') res = base - percentValue;
+
+            res = this._applyRounding(res);
+
+            this.accumulator = res;
+            this.accumulator = parseFloat(Number(this.accumulator).toPrecision(15));
+
+            this._addHistoryEntry({
+                val: this._formatResult(res),
+                symbol: '',
+                key: '%',
+                type: 'result',
+                percentValue
+            });
+            if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(res));
+
+            this.currentInput = String(res);
+            this.isNewSequence = true;
+            this._emitStatus();
+            return;
+        }
+
+        // Caso B: percentuale su moltiplicazione/divisione
+        if (this.pendingMultDivOp) {
+            const base = this.multDivOperand;
+            const percentValue = this._applyRounding(base * (val / 100));
+            let res = percentValue;
+            if (this.pendingMultDivOp === '÷') {
+                if (val === 0 && !this.isReplaying) {
+                    this._triggerError("Error");
+                    return;
+                }
+                res = this._applyRounding(base / (val / 100));
+            }
+
+            // Stampa risultato dell'operazione
+            this._addHistoryEntry({
+                val: this._formatResult(res),
+                symbol: '',
+                key: '%',
+                type: 'result',
+                percentValue
+            });
+            if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(res));
+
+            // Accumula il risultato nell'addizionatore
+            this.accumulator += res;
+            this.accumulator = parseFloat(Number(this.accumulator).toPrecision(15));
+
+            this.lastMultDivResult = res;
+            this.awaitingMultDivTotal = true;
+            this.multDivResults.push(res);
+            this.multDivTotalPendingClear = false;
+
+            this.currentInput = String(res);
+            this.isNewSequence = true;
+            this.pendingMultDivOp = null;
+            this._emitStatus();
+        }
+    }
+
     _handleEqual(explicitVal = null) {
         // Special Case: If T was just pressed, = clears the accumulator
         if (this.totalPendingState[1]) {
@@ -557,26 +641,23 @@ class CalculatorEngine {
             // Example: 2.4 x 112 = 268.8
             // stored: op='x', operand=112 (the second term)
             this.lastOperation = { op: this.pendingMultDivOp, operand: val };
-
             res = this._applyRounding(res);
-            
-            // Print result without symbol
-            this._addHistoryEntry({ val: this._formatResult(res), symbol: '', key: '=' }); 
+
+            // Stampa il risultato dell'operazione (riga sotto, senza simbolo)
+            this._addHistoryEntry({ val: this._formatResult(res), symbol: '', key: '=', type: 'result' });
             if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(res));
+
+            // Accumula il risultato nell'addizionatore e stampa il cumulato con S a destra
+            this.accumulator += res;
+            this.accumulator = parseFloat(Number(this.accumulator).toPrecision(15));
+            const accumRounded = this._applyRounding(this.accumulator);
+            this._addHistoryEntry({ val: this._formatResult(accumRounded), symbol: 'S', key: 'S', type: 'result' });
 
             this.lastMultDivResult = res;
             this.awaitingMultDivTotal = true;
             this.multDivResults.push(res);
+            this.multDivTotalPendingClear = false;
 
-            const subtotal = this.multDivResults.reduce((acc, value) => acc + value, 0);
-            const roundedSubtotal = this._applyRounding(subtotal);
-            this._addHistoryEntry({
-                val: this._formatResult(roundedSubtotal),
-                symbol: 'S',
-                key: 'S',
-                type: 'result'
-            });
-            
             this.currentInput = String(res);
             this.isNewSequence = true; 
             this.pendingMultDivOp = null;
@@ -585,23 +666,32 @@ class CalculatorEngine {
         }
         // --- SCENARIO A2: Move last mult/div result to adder via = ---
         else if (this.awaitingMultDivTotal && this.isNewSequence && this.lastMultDivResult !== null) {
-            const sum = this.multDivResults.length
-                ? this.multDivResults.reduce((acc, value) => acc + value, 0)
-                : this.lastMultDivResult;
-            const total = this._applyRounding(sum);
+            // Prima pressione di = mostra il totale accumulato; seconda pressione azzera il totalizzatore
+            if (!this.multDivTotalPendingClear) {
+                const total = this._applyRounding(this.accumulator);
+                this.currentInput = String(total);
+                this.isNewSequence = true;
+                this.multDivTotalPendingClear = true;
 
-            this.accumulator = total;
+                this._addHistoryEntry({ val: this._formatResult(total), symbol: 'T', key: 'T', type: 'result' });
+                if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(total));
+                this._emitStatus();
+                return;
+            }
+
+            // Seconda pressione: azzera totalizzatore
+            this.accumulator = 0;
             this.accumulator = parseFloat(Number(this.accumulator).toPrecision(15));
+            const total = this._applyRounding(this.accumulator);
             this.currentInput = String(total);
             this.isNewSequence = true;
-            this.totalPendingState[1] = true;
-
-            this._addHistoryEntry({ val: this._formatResult(total), symbol: 'T', key: 'T', type: 'result' });
-            if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(total));
-
+            this.multDivTotalPendingClear = false;
             this.awaitingMultDivTotal = false;
             this.lastMultDivResult = null;
             this.multDivResults = [];
+
+            this._addHistoryEntry({ val: this._formatResult(total), symbol: 'T', key: 'T', type: 'result' });
+            if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(total));
             this._emitStatus();
             return;
         }
@@ -698,6 +788,7 @@ class CalculatorEngine {
         this.lastMultDivResult = null;
         this.multDivResults = [];
         this.pendingMultDivOp = null;
+        this.multDivTotalPendingClear = false;
 
         // GT Logic Override (If GT key was pressed before T)
         // Only trigger special GT behavior if ACC switch is active? 
@@ -768,6 +859,7 @@ class CalculatorEngine {
         this.lastMultDivResult = null;
         this.multDivResults = [];
         this.pendingMultDivOp = null;
+        this.multDivTotalPendingClear = false;
 
         // GT Logic Override (If GT key was pressed before S)
         if (this.gtPending && accIndex === 1) {
@@ -832,6 +924,9 @@ class CalculatorEngine {
         this.lastMultDivResult = null;
         this.awaitingMultDivTotal = false;
         this.multDivResults = [];
+        this.multDivTotalPendingClear = false;
+        this.lastOperation = null;
+        this.gtPending = false;
         
         this.entries = []; // Clear history
         

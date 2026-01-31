@@ -25,21 +25,33 @@ body {
   min-height: 100vh;
 }
 
-.settings-toggle {
+
+.settings-bar {
   position: fixed;
-  top: 18px;
+  top: 12px;
   right: 20px;
-  width: 44px;
-  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: rgba(20, 24, 32, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.35);
+  z-index: 12;
+}
+
+.settings-toggle {
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(27, 32, 40, 0.85);
+  background: rgba(27, 32, 40, 0.9);
   color: var(--text);
   display: grid;
   place-items: center;
   box-shadow: 0 10px 20px rgba(0, 0, 0, 0.35);
   cursor: pointer;
-  z-index: 10;
 }
 
 .settings-toggle:hover {
@@ -49,6 +61,20 @@ body {
 .settings-toggle:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
+}
+
+.settings-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.75rem;
+  color: var(--muted);
+  line-height: 1.1;
+}
+
+.settings-build {
+  font-weight: 600;
+  color: var(--text);
 }
 
 .app {

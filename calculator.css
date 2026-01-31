@@ -130,6 +130,19 @@
     opacity: 0.3;
 }
 
+.vfd-icon.mem-pending {
+    animation: memPulse 0.8s ease-in-out infinite;
+}
+
+@keyframes memPulse {
+    0%, 100% {
+        opacity: 0.25;
+    }
+    50% {
+        opacity: 1;
+    }
+}
+
 
 /* --- SWITCHES ROW --- */
 .calc-switches {
@@ -613,6 +626,13 @@ button[data-key="CNT"]::after {
     text-align: right;
 }
 
+.tape-percent {
+    margin-left: 6px;
+    color: #9a9a9a;
+    font-weight: 600;
+    font-size: 0.85em;
+}
+
 /* Modifiche per specifiche layout */
 .tape-row.align-left {
     justify-content: flex-start; /* Moltiplicazioni/Divisioni a sinistra */
@@ -634,11 +654,11 @@ button[data-key="CNT"]::after {
     padding-bottom: 2px;
 }
 .tape-row.result-row .tape-symbol {
-    font-size: 1.2em; /* Simbolo più evidente */
-    color: #000;
+    font-size: 0.8em; /* Simbolo più evidente */
+    color: #05a30d;
 }
 
 .tape-row.result-row .tape-symbol.tape-symbol-small {
     font-size: 0.8em;
-    min-width: 18px;
+    min-width: 12px;
 }

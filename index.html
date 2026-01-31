@@ -8,9 +8,14 @@
   <link rel="stylesheet" href="calculator.css" />
 </head>
 <body>
-  <button class="settings-toggle" id="settings-toggle" aria-label="Apri impostazioni" type="button">
-    <span aria-hidden="true">⚙</span>
-  </button>
+  <div class="settings-bar" id="settings-bar">
+    <button class="settings-toggle" id="settings-toggle" aria-label="Apri impostazioni" type="button">
+      <span aria-hidden="true">⚙</span>
+    </button>
+    <div class="settings-meta" id="settings-meta" aria-live="polite">
+      <div class="settings-build">v0.1.0 build 105</div>
+    </div>
+  </div>
   <div class="app">
     <aside class="left-column">
       <section class="panel calendar-panel">
