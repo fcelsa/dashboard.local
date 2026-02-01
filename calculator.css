@@ -82,6 +82,17 @@
     transition: opacity 0.25s ease;
 }
 
+.vfd-display.is-blink .vfd-text,
+.vfd-display.is-blink .vfd-stack,
+.vfd-display.is-blink .vfd-status-icons {
+    animation: vfdBlink 0.8s steps(2, start) infinite;
+}
+
+@keyframes vfdBlink {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+}
+
 .vfd-text {
     flex-grow: 1;
     text-align: right;
@@ -381,16 +392,16 @@ input:checked + .slider:before {
 
 /* --- TASTI RETTANGOLARI cost sell margin tax+ tax- rate --- */
 .key-rect {
-    width: 64px; 
-    height: 32px;
+    width: 56px; 
+    height: 30px;
     border-radius: 4px;
     background: #2b3036; /* Base scura */
     color: #eee;
-    font-size: 0.75rem;
+    font-size: 0.68rem;
 }
 .key-rect::after {
-    width: 58px; /* Adattato al nuovo width */
-    height: 24px; /* Adattato al nuovo height */
+    width: 50px; /* Adattato al nuovo width */
+    height: 22px; /* Adattato al nuovo height */
     border-radius: 3px;
     /* Il colore viene definito da key-gray */
 }
@@ -655,7 +666,7 @@ button[data-key="CNT"]::after {
 }
 .tape-row.result-row .tape-symbol {
     font-size: 0.8em; /* Simbolo più evidente */
-    color: #05a30d;
+    color: #444;
 }
 
 .tape-row.result-row .tape-symbol.tape-symbol-small {

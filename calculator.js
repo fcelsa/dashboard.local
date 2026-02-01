@@ -7,6 +7,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const paperTape = document.getElementById("paper-tape");
     const keys = document.querySelectorAll(".key-btn");
     const iconMem = document.getElementById("icon-mem");
+    const iconGT = document.getElementById("icon-gt");
     const keyButtonsMap = new Map();
     
     // Switch Elements
@@ -48,7 +49,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Helper to read current rounding settings
     function getRoundingSettings() {
-        if (!switchRO || !switchDEC) return { mode: 'none', decimals: 2, isFloat: false, accumulateGT: false };
+        if (!switchRO || !switchDEC) return { mode: 'none', decimals: 2, isFloat: false, addMode: false, accumulateGT: false };
 
         // RO: 0=Truncate, 1=5/4 (None/Standard), 2=Up
         const roIndex = parseInt(switchRO.value, 10);
@@ -56,23 +57,26 @@ document.addEventListener("DOMContentLoaded", () => {
         if (roIndex === 0) mode = 'truncate';
         if (roIndex === 2) mode = 'up';
 
-        // DEC: 0=0, 1=2, 2=4, 3=6, 4=F
+        // DEC: 0=+, 1=0, 2=2, 3=3, 4=4, 5=6, 6=F
         const decIndex = parseInt(switchDEC.value, 10);
         let decimals = 2;
         let isFloat = false;
+        let addMode = false;
         
-        // Updated DEC Mapping (0, 2, 4, 6, F)
+        // Updated DEC Mapping (+, 0, 2, 3, 4, 6, F)
         switch (decIndex) {
-            case 0: decimals = 0; break;
-            case 1: decimals = 2; break;
-            case 2: decimals = 4; break;
-            case 3: decimals = 6; break;
-            case 4: isFloat = true; break;
+            case 0: addMode = true; decimals = 2; break;
+            case 1: decimals = 0; break;
+            case 2: decimals = 2; break;
+            case 3: decimals = 3; break;
+            case 4: decimals = 4; break;
+            case 5: decimals = 6; break;
+            case 6: isFloat = true; break;
         }
 
         const accumulateGT = switchACC ? switchACC.checked : false;
 
-        return { mode, decimals, isFloat, accumulateGT };
+        return { mode, decimals, isFloat, addMode, accumulateGT };
     }
 
     // --- SETTINGS LISTENERS ---
@@ -94,6 +98,10 @@ document.addEventListener("DOMContentLoaded", () => {
     let suppressClearPrint = false;
     let pendingMemoryChord = false;
     let pendingMemoryTimeout = null;
+    let pendingGTChord = false;
+    let pendingGTTimeout = null;
+    let pendingRateInput = false;
+    let pendingRateTimeout = null;
 
     // --- ENGINE ---
     // Ensure CalculatorEngine is loaded
@@ -127,13 +135,15 @@ document.addEventListener("DOMContentLoaded", () => {
     engine.onStatusUpdate = (status) => {
         const iconI = document.getElementById("icon-acc1");
         const iconII = document.getElementById("icon-acc2");
-        const iconGT = document.getElementById("icon-gt");
         const iconE = document.getElementById("icon-error");
         const iconMinus = document.getElementById("icon-minus");
 
         if (iconI) iconI.className = status.acc1 ? "vfd-icon on" : "vfd-icon off";
         if (iconII) iconII.className = status.acc2 ? "vfd-icon on" : "vfd-icon off";
-        if (iconGT) iconGT.className = status.gt ? "vfd-icon on" : "vfd-icon off";
+        if (iconGT) {
+            iconGT.classList.toggle("on", status.gt);
+            iconGT.classList.toggle("off", !status.gt);
+        }
         if (iconE) iconE.className = status.error ? "vfd-icon on" : "vfd-icon off";
         if (iconMinus) iconMinus.className = status.minus ? "vfd-icon on" : "vfd-icon off";
     };
@@ -167,13 +177,17 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     // --- ENGINE SETTINGS SYNC ---
+    let displaySettings = getRoundingSettings();
+
     function updateEngineSettings() {
         if (!engine) return;
         const s = getRoundingSettings();
+        displaySettings = s;
         engine.updateSettings({
             roundingMode: s.mode,
             decimals: s.decimals,
             isFloat: s.isFloat,
+            addMode: s.addMode,
             accumulateGT: s.accumulateGT,
             memoryMode: s.accumulateGT ? 'stack' : 'algebraic'
         });
@@ -185,6 +199,35 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     // Init engine settings
     updateEngineSettings();
+
+    function getCookie(name) {
+        const value = document.cookie
+            .split(";")
+            .map((item) => item.trim())
+            .find((item) => item.startsWith(`${name}=`));
+        if (!value) return null;
+        return decodeURIComponent(value.split("=")[1]);
+    }
+
+    function setCookie(name, value, maxAgeSeconds = 31536000) {
+        document.cookie = `${name}=${encodeURIComponent(value)}; max-age=${maxAgeSeconds}; path=/`;
+    }
+
+    const rateCookieKey = "logos_TAX_RATE";
+    const storedRate = parseFloat(getCookie(rateCookieKey));
+    if (!isNaN(storedRate)) {
+        engine.taxRate = storedRate;
+    } else {
+        engine.taxRate = 22;
+    }
+
+    engine.onRateUpdate = (rate) => {
+        setCookie(rateCookieKey, rate);
+        pendingRateInput = false;
+        if (pendingRateTimeout) clearTimeout(pendingRateTimeout);
+        pendingRateTimeout = null;
+        if (vfdDisplayWrap) vfdDisplayWrap.classList.remove("is-blink");
+    };
 
     // --- TAPE VIEW ---
     keys.forEach((btn) => {
@@ -236,7 +279,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
         // Negative Color
         const valNum = parseFloat(entry.val);
-        const isNeg = (!isNaN(valNum) && valNum < 0) || entry.symbol === '-' || entry.symbol === 'TAX-';
+        const pctNum = typeof entry.percentValue !== "undefined" ? parseFloat(entry.percentValue) : NaN;
+        const isNeg = (!isNaN(valNum) && valNum < 0) || (!isNaN(pctNum) && pctNum < 0) || entry.symbol === '-' || entry.symbol === 'TAX-';
         if (isNeg) {
             row.classList.add("negative");
         }
@@ -252,11 +296,20 @@ document.addEventListener("DOMContentLoaded", () => {
              displayVal = formatNumber(entry.val);
         }
         
+        if (entry.percentSuffix) {
+            displayVal = `${displayVal}%`;
+        }
+        if (entry.roundingFlag === 'up') {
+            displayVal = `${displayVal} ↑`;
+        } else if (entry.roundingFlag === 'down') {
+            displayVal = `${displayVal} ↓`;
+        }
         valSpan.textContent = displayVal;
 
         const symSpan = document.createElement("span");
         symSpan.className = "tape-symbol";
-        symSpan.textContent = entry.symbol || "";
+        const lead = entry.leadSymbol ? `${entry.leadSymbol} ` : "";
+        symSpan.textContent = `${lead}${entry.symbol || ""}`;
         if (entry.symbol === 'S' || entry.symbol === 'T') {
             symSpan.classList.add("tape-symbol-small");
         }
@@ -317,13 +370,18 @@ document.addEventListener("DOMContentLoaded", () => {
     // Standard JS uses decimal point. 
     function formatNumber(numStr) {
         if (numStr === null || numStr === undefined) return "";
-        let s = String(numStr);
-        
-        // If there is a decimal point, split
-        const parts = s.split(".");
-        // Format the integer part with apostrophe (Olivetti VFD thousands separator)
-        parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, "'"); 
-        // Reconstruct with decimal comma
+        const s = String(numStr);
+        const n = Number(s.replace(',', '.'));
+        if (Number.isNaN(n)) return s;
+
+        let formatted = s;
+        if (!displaySettings?.isFloat) {
+            const dec = displaySettings?.decimals ?? 2;
+            formatted = n.toFixed(dec);
+        }
+
+        const parts = formatted.split(".");
+        parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, "'");
         return parts.join(",");
     }
 
@@ -354,14 +412,22 @@ document.addEventListener("DOMContentLoaded", () => {
             textModeBuffer = "";
             isTextMode = false;
             updateDisplay("0"); // Exit text mode
-        } else if (key === "Backspace" || key === "CE") {
-            textModeBuffer = textModeBuffer.slice(0, -1);
-            updateDisplay(textModeBuffer || "#");
-        } else {
-            if (key.length === 1) { // Single char
-                 textModeBuffer += key.toUpperCase();
-                 updateDisplay(textModeBuffer);
+            return;
+        }
+
+        if (key === "Backspace" || key === "CE") {
+            if (textModeBuffer.length > 0) {
+                textModeBuffer = textModeBuffer.slice(0, -1);
             }
+            updateDisplay(textModeBuffer || "#");
+            return;
+        }
+
+        if (key === '#') return;
+
+        if (key.length === 1 && textModeBuffer.length < 21) { // Single char
+            textModeBuffer += key.toUpperCase();
+            updateDisplay(textModeBuffer);
         }
     }
 
@@ -387,6 +453,22 @@ document.addEventListener("DOMContentLoaded", () => {
     function handleInput(key, isRealKeyboardInput = false) {
         playClickSound();
 
+
+        if (pendingGTChord && key !== 'S1' && key !== 'T1') {
+            pendingGTChord = false;
+            if (pendingGTTimeout) clearTimeout(pendingGTTimeout);
+            pendingGTTimeout = null;
+            if (iconGT) iconGT.classList.remove("mem-pending");
+            engine.pressKey('GT');
+        }
+
+        if (pendingGTChord && (key === 'S1' || key === 'T1')) {
+            pendingGTChord = false;
+            if (pendingGTTimeout) clearTimeout(pendingGTTimeout);
+            pendingGTTimeout = null;
+            if (iconGT) iconGT.classList.remove("mem-pending");
+        }
+
         // --- TEXT MODE MANAGEMENT (#) ---
         if (isTextMode) {
             handleTextModeInput(key);
@@ -395,7 +477,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (key === '#') {
             isTextMode = true;
-            textModeBuffer = "#";
+            textModeBuffer = "";
             updateDisplay("#");
             return;
         }
@@ -409,6 +491,40 @@ document.addEventListener("DOMContentLoaded", () => {
             triggerClearFeedback(forcePaperReset);
         }
 
+        if (key === 'RATE') {
+            if (vfdDisplay && vfdDisplay.textContent.trim() !== '0') {
+                engine.pressKey('CLEAR_ALL');
+            }
+            pendingRateInput = true;
+            if (pendingRateTimeout) clearTimeout(pendingRateTimeout);
+            pendingRateTimeout = setTimeout(() => {
+                pendingRateInput = false;
+                pendingRateTimeout = null;
+                if (vfdDisplayWrap) vfdDisplayWrap.classList.remove("is-blink");
+                engine.pressKey('CLEAR_ALL');
+            }, 5000);
+            if (vfdDisplayWrap) vfdDisplayWrap.classList.add("is-blink");
+            if (engine?.taxRate !== undefined && engine?.taxRate !== null) {
+                updateDisplay(String(engine.taxRate));
+            }
+            engine.pressKey('RATE');
+            return;
+        }
+
+        if (key === 'GT') {
+            pendingGTChord = true;
+            if (pendingGTTimeout) clearTimeout(pendingGTTimeout);
+            pendingGTTimeout = setTimeout(() => {
+                pendingGTChord = false;
+                pendingGTTimeout = null;
+                if (iconGT) iconGT.classList.remove("mem-pending");
+                engine.pressKey('GT');
+            }, 5000);
+            if (iconGT) iconGT.classList.add("mem-pending");
+            engine.pressKey('GT');
+            return;
+        }
+
         // --- DISPATCH TO ENGINE ---
         engine.pressKey(engineKey);
     }
@@ -420,6 +536,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (eventOrKey.ctrlKey) return '00';
             if (eventOrKey.altKey) return '000';
         }
+        if (key === '#') return '#';
         if (key >= '0' && key <= '9') return key;
         if (key === '.' || key === ',') return '.';
         if (key === '+') return '+';
@@ -428,12 +545,16 @@ document.addEventListener("DOMContentLoaded", () => {
         if (key === '*' || key.toLowerCase() === 'x') return 'x';
         if (key === '/') return '÷';
         if (key === 'Enter' || key === '=') return '=';
+        if (key === '^') return '^';
         if (key === 'Backspace') return 'BACKSPACE';
         if (key === 'Delete') return 'CE';
         if (key === 'Escape') return 'CE';
         if (key.toLowerCase() === 't') return 'T1';
-        if (key.toLowerCase() === 'i') return 'S1';
+        if (key.toLowerCase() === 's' || key.toLowerCase() === 'i') return 'S1';
         if (key.toLowerCase() === 'g') return 'GT';
+        if (key.toLowerCase() === 'd') return 'Δ';
+        if (key.toLowerCase() === 'r') return '√';
+        if (key.toLowerCase() === 'p') return '^';
         return null;
     }
     
@@ -445,6 +566,11 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function handleKeyboard(event) {
+        if (isTextMode) {
+            event.preventDefault();
+            handleInput(event.key, true);
+            return;
+        }
         const keyLower = event.key.toLowerCase();
         const isUndoCombo = (event.metaKey || event.ctrlKey) && !event.altKey && keyLower === 'z';
         const isRedoCombo = event.ctrlKey && !event.metaKey && !event.altKey && keyLower === 'y';
@@ -503,6 +629,36 @@ document.addEventListener("DOMContentLoaded", () => {
             if (iconMem) iconMem.classList.remove("mem-pending");
             event.preventDefault();
             return;
+        }
+
+        if (pendingGTChord) {
+            if (keyLower === 's') {
+                event.preventDefault();
+                pendingGTChord = false;
+                if (pendingGTTimeout) clearTimeout(pendingGTTimeout);
+                pendingGTTimeout = null;
+                if (iconGT) iconGT.classList.remove("mem-pending");
+                setKeyActive('S1', true);
+                handleInput('S1', true);
+                setTimeout(() => setKeyActive('S1', false), 80);
+                return;
+            }
+            if (keyLower === 't') {
+                event.preventDefault();
+                pendingGTChord = false;
+                if (pendingGTTimeout) clearTimeout(pendingGTTimeout);
+                pendingGTTimeout = null;
+                if (iconGT) iconGT.classList.remove("mem-pending");
+                setKeyActive('T1', true);
+                handleInput('T1', true);
+                setTimeout(() => setKeyActive('T1', false), 80);
+                return;
+            }
+            pendingGTChord = false;
+            if (pendingGTTimeout) clearTimeout(pendingGTTimeout);
+            pendingGTTimeout = null;
+            if (iconGT) iconGT.classList.remove("mem-pending");
+            handleInput('GT', true);
         }
 
         if (keyLower === 'm') {

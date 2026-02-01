@@ -18,6 +18,8 @@ const fxKeyForm = document.getElementById("fx-key-form");
 const fxKeyInput = document.getElementById("freecurrency-key");
 const fxKeyStatus = document.getElementById("fx-key-status");
 const fxKeyClearBtn = document.getElementById("clear-freecurrency-key");
+const tabButtons = document.querySelectorAll(".tab-btn");
+const tabPanels = document.querySelectorAll(".tab-panel");
 
 let fxHistory = null;
 let fxChartSize = { width: 0, height: 0 };
@@ -368,6 +370,22 @@ function updateFxKeyStatus() {
   }
 }
 
+function setActiveTab(tabId) {
+  tabButtons.forEach((btn) => {
+    const isActive = btn.dataset.tab === tabId;
+    btn.classList.toggle("active", isActive);
+    btn.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+
+  tabPanels.forEach((panel) => {
+    const isActive = panel.dataset.tabPanel === tabId;
+    panel.classList.toggle("active", isActive);
+    if (panel.id === "settings-panel") {
+      panel.setAttribute("aria-hidden", isActive ? "false" : "true");
+    }
+  });
+}
+
 function getCachedSessionRate() {
   const raw = getCookie(fxSessionKey);
   if (!raw) return null;
@@ -672,8 +690,13 @@ async function fetchFxLatest() {
 // --- FX CHART (ANNUAL) ---
 function resizeFxChart() {
   if (!fxChartEl) return;
-  const targetWidth = 560;
-  const targetHeight = 200;
+  const container = fxChartEl.parentElement;
+  if (!container) return;
+  const styles = window.getComputedStyle(container);
+  const paddingX = parseFloat(styles.paddingLeft) + parseFloat(styles.paddingRight);
+  const paddingY = parseFloat(styles.paddingTop) + parseFloat(styles.paddingBottom);
+  const targetWidth = Math.max(0, container.clientWidth - paddingX);
+  const targetHeight = Math.max(0, container.clientHeight - paddingY);
   if (targetWidth === fxChartSize.width && targetHeight === fxChartSize.height) return;
 
   const ratio = window.devicePixelRatio || 1;
@@ -932,6 +955,22 @@ function initDashboard() {
         "aria-label",
         isOpen ? "Chiudi impostazioni" : "Apri impostazioni"
       );
+    });
+  }
+
+  if (tabButtons.length > 0) {
+    tabButtons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        setActiveTab(btn.dataset.tab);
+      });
+    });
+  }
+
+  if (tabButtons.length > 0) {
+    tabButtons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        setActiveTab(btn.dataset.tab);
+      });
     });
   }
 

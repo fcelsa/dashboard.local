@@ -1,14 +1,99 @@
 
-let businessLogic;
-// Support for Node.js
-if (typeof require !== 'undefined') {
-    try {
-        businessLogic = require('./business');
-    } catch (e) { console.warn("Business module not found via require"); }
+// Business math helpers (kept local to the engine)
+// Margin (%) is treated as a percent of sell price (gross margin).
+function computeSell(cost, marginPercent) {
+    const m = Number(marginPercent) / 100;
+    if (isNaN(cost) || isNaN(m)) return NaN;
+    const denom = 1 - m;
+    if (denom === 0) throw new Error('DivisionByZero');
+    return Number(cost) / denom;
 }
-// Support for Browser (global)
-if (typeof window !== 'undefined' && window.business) {
-    businessLogic = window.business;
+
+function computeCost(sell, marginPercent) {
+    const m = Number(marginPercent) / 100;
+    if (isNaN(sell) || isNaN(m)) return NaN;
+    return Number(sell) * (1 - m);
+}
+
+function computeMargin(cost, sell) {
+    cost = Number(cost);
+    sell = Number(sell);
+    if (isNaN(cost) || isNaN(sell)) return NaN;
+    if (sell === 0) throw new Error('DivisionByZero');
+    return ((sell - cost) / sell) * 100;
+}
+
+// Markup (%) = (profit / cost) * 100
+function computeMarkup(cost, sell) {
+    cost = Number(cost);
+    sell = Number(sell);
+    if (isNaN(cost) || isNaN(sell)) return NaN;
+    if (cost === 0) throw new Error('DivisionByZero');
+    return ((sell - cost) / cost) * 100;
+}
+
+function computeSellFromMarkup(cost, markupPercent) {
+    const m = Number(markupPercent) / 100;
+    if (isNaN(cost) || isNaN(m)) return NaN;
+    return Number(cost) * (1 + m);
+}
+
+function computeCostFromMarkup(sell, markupPercent) {
+    const m = Number(markupPercent) / 100;
+    if (isNaN(sell) || isNaN(m)) return NaN;
+    const denom = 1 + m;
+    if (denom === 0) throw new Error('DivisionByZero');
+    return Number(sell) / denom;
+}
+
+function addTax(amount, ratePercent) {
+    const r = Number(ratePercent) / 100;
+    if (isNaN(amount) || isNaN(r)) return NaN;
+    return Number(amount) * (1 + r);
+}
+
+function removeTax(amountWithTax, ratePercent) {
+    const r = Number(ratePercent) / 100;
+    if (isNaN(amountWithTax) || isNaN(r)) return NaN;
+    const denom = 1 + r;
+    if (denom === 0) throw new Error('DivisionByZero');
+    return Number(amountWithTax) / denom;
+}
+
+// Rounding helpers
+function roundToDecimals(value, decimals) {
+    const factor = Math.pow(10, decimals);
+    return Math.round(Number(value) * factor) / factor;
+}
+
+// applyRounding modes:
+// mode: 'none' | 'nearest5' | 'up' | 'truncate'
+// decimals: number of decimals to apply after rounding step
+function applyRounding(value, mode = 'none', decimals = 2) {
+    value = Number(value);
+    if (isNaN(value)) return NaN;
+    if (mode === 'none') return roundToDecimals(value, decimals);
+
+    if (mode === 'nearest5') {
+        // Round to nearest 0.05, then to requested decimals
+        const step = 0.05;
+        const rounded = Math.round(value / step) * step;
+        return roundToDecimals(rounded, decimals);
+    }
+
+    if (mode === 'up') {
+        // Round up (ceiling) to given decimals
+        const factor = Math.pow(10, decimals);
+        return Math.ceil(value * factor) / factor;
+    }
+
+    if (mode === 'truncate') {
+        // Truncate (cut off) to given decimals
+        const factor = Math.pow(10, decimals);
+        return Math.trunc(value * factor) / factor;
+    }
+
+    return roundToDecimals(value, decimals);
 }
 
 class CalculatorEngine {
@@ -36,6 +121,9 @@ class CalculatorEngine {
         this.multDivTotalPendingClear = false;
         this.multDivResults = [];
         this.gtPending = false;
+        this.pendingDelta = null;
+        this.pendingPowerBase = null;
+        this.addModeBuffer = "";
 
         // Undo/Redo
         this.undoStack = [];
@@ -50,6 +138,10 @@ class CalculatorEngine {
         // Business Logic State
         this.taxRate = 22; // Default
         this.marginPercent = 0;
+        this.markupPercent = 0;
+        this.costValue = null;
+        this.sellValue = null;
+        this.pricingMode = 'margin'; // 'margin' | 'markup'
         this.awaitingRate = false;
 
         // Settings (default)
@@ -57,6 +149,7 @@ class CalculatorEngine {
             roundingMode: 'none',   // none, truncate, up
             decimals: 2,
             isFloat: false,
+            addMode: false,
             accumulateGT: false, // Will be set by switch
             ...settings
         };
@@ -68,6 +161,7 @@ class CalculatorEngine {
         this.onTapeRefresh = (entries) => {}; 
         this.onError = (msg) => {};
         this.onMemoryUpdate = (memory) => {};
+        this.onRateUpdate = (rate) => {};
     }
 
     // --- SETTINGS ---
@@ -118,8 +212,8 @@ class CalculatorEngine {
     _shouldCheckpoint(key) {
         const checkpointKeys = new Set([
             '+', '-', 'x', '÷', '=', 'Enter',
-            'T', 'T1', 'S', 'S1', '%',
-            'RATE', 'TAX+', 'TAX-', 'COST', 'SELL', 'MARGIN',
+            'T', 'T1', 'S', 'S1', '%', 'Δ', '√', '^',
+            'RATE', 'TAX+', 'TAX-', 'COST', 'SELL', 'MARGIN', 'MARKUP',
             'CLEAR_ALL', 'M+', 'M-', 'MR', 'MC'
         ]);
         return checkpointKeys.has(key);
@@ -135,6 +229,12 @@ class CalculatorEngine {
             memory: this.memoryRegister,
             hasMemory: this.memoryMode === 'stack' ? hasStack : hasRegister,
         });
+    }
+
+    _accumulateGT(val) {
+        if (val === null || typeof val === 'undefined' || isNaN(val)) return;
+        this.grandTotal += Number(val);
+        this.grandTotal = parseFloat(Number(this.grandTotal).toPrecision(15));
     }
     
     // --- STATUS ---
@@ -174,12 +274,35 @@ class CalculatorEngine {
         this.awaitingMultDivTotal = false;
         this.multDivResults = [];
         this.multDivTotalPendingClear = false;
+        this.pendingAddSubPercent = null;
+        this.pendingDelta = null;
+        this.pendingPowerBase = null;
 
         try {
             for (const entry of savedEntries) {
                 if (entry.type === 'input') {
                     // Logic dispatch
-                    if (['+', '-'].includes(entry.key)) {
+                    if (entry.key === '%' && typeof entry.percentBase !== 'undefined' && typeof entry.percentValue !== 'undefined') {
+                        const base = Number(entry.percentBase);
+                        const signedPercentValue = Number(entry.percentValue);
+                        const res = this._applyRounding(base + signedPercentValue);
+                        this.accumulator = parseFloat(Number(res).toPrecision(15));
+                        this.currentInput = "0";
+                        this.isNewSequence = true;
+                        this.lastAddSubValue = null;
+                        this.lastAddSubOp = entry.percentOp || null;
+                        this.pendingAddSubPercent = null;
+                    } else if (entry.key === 'Δ') {
+                        this._handleDelta(entry.val, 'first');
+                    } else if (entry.key === 'Δ2') {
+                        this._handleDelta(entry.val, 'second');
+                    } else if (entry.key === '√') {
+                        this._handleSqrt(entry.val);
+                    } else if (entry.key === '^') {
+                        this._handlePower(entry.val, 'first');
+                    } else if (entry.key === 'POW2') {
+                        this._handlePower(entry.val, 'second');
+                    } else if (['+', '-'].includes(entry.key)) {
                         this._handleAddSub(entry.key, entry.val); 
                     } else if (['x', '÷'].includes(entry.key)) {
                         this._handleMultDiv(entry.key, entry.val);
@@ -237,21 +360,18 @@ class CalculatorEngine {
         // Rate Confirmation Logic
         if (this.awaitingRate) {
              const isNumeric = (!isNaN(parseFloat(key)) || key === '00' || key === '000' || key === '.');
-             if (!isNumeric) {
-                 // Confirm Rate
+             if (key === '=' || key === 'Enter') {
                  const rateVal = parseFloat(this.currentInput);
                  if (!isNaN(rateVal)) {
                      this.taxRate = rateVal;
-                     // Special message or standard update?
-                     // We use display update to show conf.
-                     // We could add a "RATE SET" entry to history?
+                     if (this.onRateUpdate) this.onRateUpdate(this.taxRate);
                  }
-                 this.awaitingRate = false; 
-                 // Consume current input as rate value
-                 this.currentInput = "0";
-                 this.isNewSequence = true;
-                 this.onDisplayUpdate("RATE " + this.taxRate);
-                 return; // Stop processing this key (it just confirmed rate)
+                 this.awaitingRate = false;
+                 this._clearAll();
+                 return;
+             }
+             if (!isNumeric) {
+                 return;
              }
         }
 
@@ -290,6 +410,15 @@ class CalculatorEngine {
             case '%':
                 this._handlePercent();
                 break;
+            case 'Δ':
+                this._handleDelta();
+                break;
+            case '√':
+                this._handleSqrt();
+                break;
+            case '^':
+                this._handlePower();
+                break;
             case 'GT':
                 this._handleGrandTotal();
                 break;
@@ -301,6 +430,7 @@ class CalculatorEngine {
             case 'COST':
             case 'SELL':
             case 'MARGIN':
+            case 'MARKUP':
                 this._handleBusinessKey(key);
                 break;
                 
@@ -329,12 +459,38 @@ class CalculatorEngine {
 
     // --- INPUT HANDLERS ---
     _handleNumber(digits) {
+        if (this.settings.addMode) {
+            if (this.isNewSequence || this.currentInput === "0") {
+                this.addModeBuffer = "";
+            }
+            const addDigits = String(digits);
+            const buffer = (this.addModeBuffer || "") + addDigits;
+            if (buffer.length > 16) return;
+            this.addModeBuffer = buffer;
+
+            const raw = this.addModeBuffer || "0";
+            let intPart = "0";
+            let fracPart = "00";
+            if (raw.length <= 2) {
+                fracPart = raw.padStart(2, "0");
+            } else {
+                intPart = raw.slice(0, -2);
+                fracPart = raw.slice(-2);
+            }
+            this.currentInput = `${intPart}.${fracPart}`;
+            this.isNewSequence = false;
+            if (!this.isReplaying) this.onDisplayUpdate(this.currentInput);
+            return;
+        }
         // Se stavamo attendendo un totale da catena mult/div e l'utente riprende a digitare, azzera lo stato catena
         if (this.awaitingMultDivTotal && this.isNewSequence && !this.pendingMultDivOp) {
             this.awaitingMultDivTotal = false;
             this.lastMultDivResult = null;
             this.multDivResults = [];
             this.multDivTotalPendingClear = false;
+        }
+        if (this.pendingAddSubPercent) {
+            this.pendingAddSubPercent = null;
         }
         // Reset Total Pending State on numeric input
         this.totalPendingState[1] = false;
@@ -351,11 +507,17 @@ class CalculatorEngine {
     }
 
     _handleDecimal() {
+        if (this.settings.addMode) {
+            return;
+        }
         if (this.awaitingMultDivTotal && this.isNewSequence && !this.pendingMultDivOp) {
             this.awaitingMultDivTotal = false;
             this.lastMultDivResult = null;
             this.multDivResults = [];
             this.multDivTotalPendingClear = false;
+        }
+        if (this.pendingAddSubPercent) {
+            this.pendingAddSubPercent = null;
         }
         if (this.isNewSequence) {
             this.currentInput = "0.";
@@ -367,6 +529,54 @@ class CalculatorEngine {
     }
 
     _handleAddSub(op, explicitVal = null) {
+        if (this.totalPendingState[1]) {
+            this.totalPendingState[1] = false;
+            this.accumulator = 0;
+            this.lastAddSubValue = null;
+        }
+        if (this.pendingDelta !== null) {
+            this.pendingDelta = null;
+        }
+        if (this.pendingPowerBase !== null) {
+            this.pendingPowerBase = null;
+        }
+        if (this.pendingAddSubPercent) {
+            const { base, percentInput } = this.pendingAddSubPercent;
+            const percentValue = this._applyRounding(base * (percentInput / 100));
+            const signedPercentValue = op === '-' ? -percentValue : percentValue;
+            const res = this._applyRounding(base + signedPercentValue);
+
+            this._addHistoryEntry({
+                val: percentInput,
+                symbol: '%',
+                key: '%',
+                type: 'input',
+                percentValue: signedPercentValue,
+                percentBase: base,
+                percentOp: op
+            });
+
+            this._addHistoryEntry({
+                val: this._formatResult(res),
+                symbol: 'T',
+                key: 'T',
+                type: 'result'
+            });
+
+            if (!this.isReplaying) {
+                this.onDisplayUpdate(this._formatResult(res));
+            }
+
+            this.accumulator = parseFloat(Number(res).toPrecision(15));
+            this.currentInput = "0";
+            this.isNewSequence = true;
+            this.lastAddSubValue = null;
+            this.lastAddSubOp = op;
+            this.pendingAddSubPercent = null;
+            this._emitStatus();
+            return;
+        }
+
         // Uscendo dalla catena mult/div, azzera il suo stato
         this.awaitingMultDivTotal = false;
         this.lastMultDivResult = null;
@@ -427,6 +637,16 @@ class CalculatorEngine {
         return isNaN(val) ? null : val;
     }
 
+    _resolveUnaryBaseValue() {
+        const parsed = parseFloat(this.currentInput);
+        const hasExplicitInput = !this.isNewSequence || this.currentInput !== "0";
+        if (!isNaN(parsed) && hasExplicitInput) return parsed;
+        if (this.pendingMultDivOp && this.multDivOperand !== null && this.isNewSequence) return this.multDivOperand;
+        if (this.accumulator !== 0 && this.isNewSequence) return this.accumulator;
+        if (!isNaN(parsed)) return parsed;
+        return null;
+    }
+
     _handleAlgebraicMemory(key) {
         const val = this._readInputValue();
         if (key === 'M+') {
@@ -483,6 +703,12 @@ class CalculatorEngine {
     }
 
     _handleMultDiv(op, explicitVal = null) {
+        if (this.pendingDelta !== null) {
+            this.pendingDelta = null;
+        }
+        if (this.pendingPowerBase !== null) {
+            this.pendingPowerBase = null;
+        }
         let val = explicitVal !== null ? explicitVal : parseFloat(this.currentInput);
         this.awaitingMultDivTotal = false;
 
@@ -537,77 +763,220 @@ class CalculatorEngine {
     }
 
     _handlePercent() {
+        if (this.pendingDelta !== null) {
+            this.pendingDelta = null;
+        }
+        if (this.pendingPowerBase !== null) {
+            this.pendingPowerBase = null;
+        }
         const val = parseFloat(this.currentInput);
         if (isNaN(val)) return;
-
-        // Caso A: percentuale su addizione/sottrazione
-        if (this.lastAddSubOp && !this.pendingMultDivOp) {
-            const base = this.accumulator;
-            const percentValue = this._applyRounding(base * (val / 100));
-            let res = base;
-            if (this.lastAddSubOp === '+') res = base + percentValue;
-            if (this.lastAddSubOp === '-') res = base - percentValue;
-
-            res = this._applyRounding(res);
-
-            this.accumulator = res;
-            this.accumulator = parseFloat(Number(this.accumulator).toPrecision(15));
-
-            this._addHistoryEntry({
-                val: this._formatResult(res),
-                symbol: '',
-                key: '%',
-                type: 'result',
-                percentValue
-            });
-            if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(res));
-
-            this.currentInput = String(res);
+        // Logos: percentuale solo con x/÷; per somma/sottrazione usare il cambio segno
+        if (!this.pendingMultDivOp) {
+            if (this.accumulator === null || typeof this.accumulator === 'undefined') return;
+            this.pendingAddSubPercent = {
+                base: this.accumulator,
+                percentInput: val
+            };
             this.isNewSequence = true;
-            this._emitStatus();
+            if (!this.isReplaying) this.onDisplayUpdate(this.currentInput + "%");
             return;
         }
 
-        // Caso B: percentuale su moltiplicazione/divisione
-        if (this.pendingMultDivOp) {
-            const base = this.multDivOperand;
-            const percentValue = this._applyRounding(base * (val / 100));
-            let res = percentValue;
-            if (this.pendingMultDivOp === '÷') {
-                if (val === 0 && !this.isReplaying) {
-                    this._triggerError("Error");
-                    return;
-                }
-                res = this._applyRounding(base / (val / 100));
+        if (!this.isReplaying) this.onDisplayUpdate(this.currentInput + "%");
+
+        const base = this.multDivOperand;
+        const percentValue = this._applyRounding(base * (val / 100));
+        let res = percentValue;
+        if (this.pendingMultDivOp === '÷') {
+            if (val === 0 && !this.isReplaying) {
+                this._triggerError("Error");
+                return;
             }
-
-            // Stampa risultato dell'operazione
-            this._addHistoryEntry({
-                val: this._formatResult(res),
-                symbol: '',
-                key: '%',
-                type: 'result',
-                percentValue
-            });
-            if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(res));
-
-            // Accumula il risultato nell'addizionatore
-            this.accumulator += res;
-            this.accumulator = parseFloat(Number(this.accumulator).toPrecision(15));
-
-            this.lastMultDivResult = res;
-            this.awaitingMultDivTotal = true;
-            this.multDivResults.push(res);
-            this.multDivTotalPendingClear = false;
-
-            this.currentInput = String(res);
-            this.isNewSequence = true;
-            this.pendingMultDivOp = null;
-            this._emitStatus();
+            res = this._applyRounding(base / (val / 100));
         }
+
+        // Stampa risultato dell'operazione
+        const percentResRounded = this._applyRoundingWithFlag(res);
+        res = percentResRounded.value;
+        this._addHistoryEntry({
+            val: this._formatResult(res),
+            symbol: '%',
+            key: '%',
+            type: 'result',
+            percentValue,
+            roundingFlag: percentResRounded.roundingFlag
+        });
+        if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(res));
+
+        this._accumulateGT(res);
+
+        // Accumula il risultato nell'addizionatore
+        this.accumulator += res;
+        this.accumulator = parseFloat(Number(this.accumulator).toPrecision(15));
+
+        this.lastMultDivResult = res;
+        this.awaitingMultDivTotal = true;
+        this.multDivResults.push(res);
+        this.multDivTotalPendingClear = false;
+
+        this.currentInput = String(res);
+        this.isNewSequence = true;
+        this.pendingMultDivOp = null;
+        this._emitStatus();
+    }
+
+    _handleDelta(explicitVal = null, stage = null) {
+        const val = explicitVal !== null
+            ? explicitVal
+            : (stage === 'second' ? parseFloat(this.currentInput) : this._resolveUnaryBaseValue());
+        if (val === null || isNaN(val)) return;
+
+        const hasPending = this.pendingDelta !== null && typeof this.pendingDelta !== 'undefined';
+
+        if (!hasPending || stage === 'first') {
+            this.pendingMultDivOp = null;
+            this.multDivOperand = null;
+            this.awaitingMultDivTotal = false;
+            this.lastMultDivResult = null;
+            this.multDivResults = [];
+            this.multDivTotalPendingClear = false;
+            this.pendingAddSubPercent = null;
+            this.pendingDelta = val;
+            this._addHistoryEntry({ val, symbol: 'Δ', key: 'Δ', type: 'input' });
+            this.currentInput = "0";
+            this.isNewSequence = true;
+            return;
+        }
+
+        const base = val;
+        const nuovoValore = this.pendingDelta;
+        if (base === 0) {
+            if (!this.isReplaying) this._triggerError("Error");
+            return;
+        }
+
+        const diff = nuovoValore - base;
+        const percentRounded = this._applyRoundingWithFlag((diff / base) * 100);
+        const diffRounded = this._applyRoundingWithFlag(diff);
+
+        this._addHistoryEntry({ val: base, symbol: '=', key: 'Δ2', type: 'input' });
+        this._addHistoryEntry({
+            val: this._formatResult(percentRounded.value),
+            symbol: '%',
+            key: 'Δ%',
+            type: 'result',
+            roundingFlag: percentRounded.roundingFlag
+        });
+        this._addHistoryEntry({
+            val: this._formatResult(diffRounded.value),
+            symbol: 'T',
+            key: 'ΔT',
+            type: 'result',
+            roundingFlag: diffRounded.roundingFlag
+        });
+
+        this._accumulateGT(diffRounded.value);
+
+        if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(diffRounded));
+
+        this.accumulator = parseFloat(Number(diffRounded).toPrecision(15));
+        this.currentInput = String(diffRounded.value);
+        this.isNewSequence = true;
+        this.pendingDelta = null;
+        this._emitStatus();
+    }
+
+    _handleSqrt(explicitVal = null) {
+        const val = explicitVal !== null ? explicitVal : this._resolveUnaryBaseValue();
+        if (val === null || isNaN(val)) return;
+        this.pendingMultDivOp = null;
+        this.multDivOperand = null;
+        this.awaitingMultDivTotal = false;
+        this.lastMultDivResult = null;
+        this.multDivResults = [];
+        this.multDivTotalPendingClear = false;
+        this.pendingAddSubPercent = null;
+        if (val < 0) {
+            if (!this.isReplaying) this._triggerError("Error");
+            return;
+        }
+        const resRounded = this._applyRoundingWithFlag(Math.sqrt(val));
+        const res = resRounded.value;
+        this._addHistoryEntry({ val, symbol: '√', key: '√', type: 'input' });
+        this._addHistoryEntry({
+            val: this._formatResult(res),
+            symbol: '',
+            key: '=',
+            type: 'result',
+            roundingFlag: resRounded.roundingFlag
+        });
+        if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(res));
+
+        this._accumulateGT(res);
+        this.currentInput = String(res);
+        this.isNewSequence = true;
+        this.pendingPowerBase = null;
+        this.pendingDelta = null;
+        this._emitStatus();
+    }
+
+    _handlePower(explicitVal = null, stage = null) {
+        const val = explicitVal !== null
+            ? explicitVal
+            : (stage === 'second' ? parseFloat(this.currentInput) : this._resolveUnaryBaseValue());
+        if (val === null || isNaN(val)) return;
+
+        const hasPending = this.pendingPowerBase !== null && typeof this.pendingPowerBase !== 'undefined';
+
+        if (!hasPending || stage === 'first') {
+            this.pendingMultDivOp = null;
+            this.multDivOperand = null;
+            this.awaitingMultDivTotal = false;
+            this.lastMultDivResult = null;
+            this.multDivResults = [];
+            this.multDivTotalPendingClear = false;
+            this.pendingAddSubPercent = null;
+            this.pendingPowerBase = val;
+            this._addHistoryEntry({ val, symbol: '^', key: '^', type: 'input' });
+            this.currentInput = "0";
+            this.isNewSequence = true;
+            return;
+        }
+
+        const base = this.pendingPowerBase;
+        const exp = val;
+        const resRounded = this._applyRoundingWithFlag(Math.pow(base, exp));
+        const res = resRounded.value;
+
+        this._addHistoryEntry({ val: exp, symbol: '=', key: 'POW2', type: 'input' });
+        this._addHistoryEntry({
+            val: this._formatResult(res),
+            symbol: '',
+            key: '=',
+            type: 'result',
+            roundingFlag: resRounded.roundingFlag
+        });
+        if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(res));
+
+        this._accumulateGT(res);
+
+        this.currentInput = String(res);
+        this.isNewSequence = true;
+        this.pendingPowerBase = null;
+        this.pendingDelta = null;
+        this._emitStatus();
     }
 
     _handleEqual(explicitVal = null) {
+        if (this.pendingDelta !== null) {
+            this._handleDelta(explicitVal, 'second');
+            return;
+        }
+        if (this.pendingPowerBase !== null) {
+            this._handlePower(explicitVal, 'second');
+            return;
+        }
         // Special Case: If T was just pressed, = clears the accumulator
         if (this.totalPendingState[1]) {
             this.accumulator = 0;
@@ -641,17 +1010,32 @@ class CalculatorEngine {
             // Example: 2.4 x 112 = 268.8
             // stored: op='x', operand=112 (the second term)
             this.lastOperation = { op: this.pendingMultDivOp, operand: val };
-            res = this._applyRounding(res);
+            const resRounded = this._applyRoundingWithFlag(res);
+            res = resRounded.value;
 
             // Stampa il risultato dell'operazione (riga sotto, senza simbolo)
-            this._addHistoryEntry({ val: this._formatResult(res), symbol: '', key: '=', type: 'result' });
+            this._addHistoryEntry({
+                val: this._formatResult(res),
+                symbol: '',
+                key: '=',
+                type: 'result',
+                roundingFlag: resRounded.roundingFlag
+            });
             if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(res));
+
+            this._accumulateGT(res);
 
             // Accumula il risultato nell'addizionatore e stampa il cumulato con S a destra
             this.accumulator += res;
             this.accumulator = parseFloat(Number(this.accumulator).toPrecision(15));
-            const accumRounded = this._applyRounding(this.accumulator);
-            this._addHistoryEntry({ val: this._formatResult(accumRounded), symbol: 'S', key: 'S', type: 'result' });
+            const accumRounded = this._applyRoundingWithFlag(this.accumulator);
+            this._addHistoryEntry({
+                val: this._formatResult(accumRounded.value),
+                symbol: 'S',
+                key: 'S',
+                type: 'result',
+                roundingFlag: accumRounded.roundingFlag
+            });
 
             this.lastMultDivResult = res;
             this.awaitingMultDivTotal = true;
@@ -668,13 +1052,19 @@ class CalculatorEngine {
         else if (this.awaitingMultDivTotal && this.isNewSequence && this.lastMultDivResult !== null) {
             // Prima pressione di = mostra il totale accumulato; seconda pressione azzera il totalizzatore
             if (!this.multDivTotalPendingClear) {
-                const total = this._applyRounding(this.accumulator);
-                this.currentInput = String(total);
+                const total = this._applyRoundingWithFlag(this.accumulator);
+                this.currentInput = String(total.value);
                 this.isNewSequence = true;
                 this.multDivTotalPendingClear = true;
 
-                this._addHistoryEntry({ val: this._formatResult(total), symbol: 'T', key: 'T', type: 'result' });
-                if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(total));
+                this._addHistoryEntry({
+                    val: this._formatResult(total.value),
+                    symbol: 'T',
+                    key: 'T',
+                    type: 'result',
+                    roundingFlag: total.roundingFlag
+                });
+                if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(total.value));
                 this._emitStatus();
                 return;
             }
@@ -682,16 +1072,22 @@ class CalculatorEngine {
             // Seconda pressione: azzera totalizzatore
             this.accumulator = 0;
             this.accumulator = parseFloat(Number(this.accumulator).toPrecision(15));
-            const total = this._applyRounding(this.accumulator);
-            this.currentInput = String(total);
+            const total = this._applyRoundingWithFlag(this.accumulator);
+            this.currentInput = String(total.value);
             this.isNewSequence = true;
             this.multDivTotalPendingClear = false;
             this.awaitingMultDivTotal = false;
             this.lastMultDivResult = null;
             this.multDivResults = [];
 
-            this._addHistoryEntry({ val: this._formatResult(total), symbol: 'T', key: 'T', type: 'result' });
-            if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(total));
+            this._addHistoryEntry({
+                val: this._formatResult(total.value),
+                symbol: 'T',
+                key: 'T',
+                type: 'result',
+                roundingFlag: total.roundingFlag
+            });
+            if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(total.value));
             this._emitStatus();
             return;
         }
@@ -737,20 +1133,22 @@ class CalculatorEngine {
                 res = val / this.lastOperation.operand;
             }
 
-            res = this._applyRounding(res);
+            const resRounded = this._applyRoundingWithFlag(res);
+            res = resRounded.value;
 
             // Print Result
-            this._addHistoryEntry({ val: this._formatResult(res), symbol: '', key: '=' }); 
+            this._addHistoryEntry({
+                val: this._formatResult(res),
+                symbol: '',
+                key: '=',
+                roundingFlag: resRounded.roundingFlag
+            }); 
             if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(res));
 
             this.accumulator += res;
             this.accumulator = parseFloat(Number(this.accumulator).toPrecision(15));
             
-            // Logic GT Accumulation (Switch Dependent)
-            if (this.settings.accumulateGT) {
-                this.grandTotal += res;
-                this.grandTotal = parseFloat(Number(this.grandTotal).toPrecision(15));
-            }
+            this._accumulateGT(res);
 
             this.currentInput = String(res);
             this.isNewSequence = true;
@@ -800,10 +1198,17 @@ class CalculatorEngine {
             this.gtPending = false;
             // Print GT Total (GT*) e Clear
             let val = this.grandTotal;
-            val = this._applyRounding(val);
+            const gtRounded = this._applyRoundingWithFlag(val);
+            val = gtRounded.value;
             
             // Format symbol usually GT* for Total
-            this._addHistoryEntry({ val: this._formatResult(val), symbol: 'GT*', key: 'GT', type: 'input' }); 
+            this._addHistoryEntry({
+                val: this._formatResult(val),
+                symbol: 'GT*',
+                key: 'GT',
+                type: 'input',
+                roundingFlag: gtRounded.roundingFlag
+            }); 
             if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(val));
             
             // Clear GT
@@ -816,7 +1221,8 @@ class CalculatorEngine {
 
         // Acc 1
         let val = this.accumulator;
-        val = this._applyRounding(val);
+        const totalRounded = this._applyRoundingWithFlag(val);
+        val = totalRounded.value;
         
         // Logic:
         // 1st press: Print Total (looks like Total), do NOT clear. Set Pending State.
@@ -830,21 +1236,25 @@ class CalculatorEngine {
         const sym = (isSecondPress ? '*' : '◇');
         
         // Tag as input so it replays (clears accumulators correctly)
-        this._addHistoryEntry({ val: this._formatResult(val), symbol: sym, key: 'T' + accIndex, type: 'input' });
+        this._addHistoryEntry({
+            val: this._formatResult(val),
+            symbol: sym,
+            key: 'T' + accIndex,
+            type: 'input',
+            roundingFlag: totalRounded.roundingFlag
+        });
         if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(val));
         
         if (isSecondPress) {
             // Finalize: Clear & Add to GT
-            if (this.settings.accumulateGT) {
-                this.grandTotal += val;
-                this.grandTotal = parseFloat(Number(this.grandTotal).toPrecision(15));
-            }
+            // Do not accumulate here to avoid double add
             this.accumulator = 0;
             // Reset state
             this.totalPendingState[accIndex] = false;
         } else {
             // First press: Hold state
             this.totalPendingState[accIndex] = true;
+            this._accumulateGT(val);
         }
         
         // "questo risultato ... sarà il primo operando"
@@ -866,9 +1276,16 @@ class CalculatorEngine {
              this.gtPending = false;
              // Print GT Subtotal (GT) - No Clear
              let val = this.grandTotal;
-             val = this._applyRounding(val);
+             const gtRounded = this._applyRoundingWithFlag(val);
+             val = gtRounded.value;
              
-             this._addHistoryEntry({ val: this._formatResult(val), symbol: 'GT', key: 'GT', type: 'input' });
+             this._addHistoryEntry({
+                 val: this._formatResult(val),
+                 symbol: 'GT',
+                 key: 'GT',
+                 type: 'input',
+                 roundingFlag: gtRounded.roundingFlag
+             });
              if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(val));
              
              this.currentInput = String(val);
@@ -879,11 +1296,18 @@ class CalculatorEngine {
         }
 
         let val = this.accumulator;
-        val = this._applyRounding(val);
+        const subtotalRounded = this._applyRoundingWithFlag(val);
+        val = subtotalRounded.value;
         
         const sym = '◇';
         
-        this._addHistoryEntry({ val: this._formatResult(val), symbol: sym, key: 'S' + accIndex, type: 'input' });
+        this._addHistoryEntry({
+            val: this._formatResult(val),
+            symbol: sym,
+            key: 'S' + accIndex,
+            type: 'input',
+            roundingFlag: subtotalRounded.roundingFlag
+        });
         if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(val));
         
         // Do NOT clear accumulator
@@ -893,7 +1317,7 @@ class CalculatorEngine {
     
     _handleGrandTotal() {
         // Toggle GT Pending State
-        this.gtPending = true;
+        this.gtPending = !this.gtPending;
     }
 
     _handleBackspace() {
@@ -925,8 +1349,17 @@ class CalculatorEngine {
         this.awaitingMultDivTotal = false;
         this.multDivResults = [];
         this.multDivTotalPendingClear = false;
+        this.pendingAddSubPercent = null;
+        this.pendingDelta = null;
+        this.pendingPowerBase = null;
+        this.awaitingRate = false;
+        this.costValue = null;
+        this.sellValue = null;
+        this.markupPercent = 0;
+        this.pricingMode = 'margin';
         this.lastOperation = null;
         this.gtPending = false;
+        this.addModeBuffer = "";
         
         this.entries = []; // Clear history
         
@@ -939,27 +1372,31 @@ class CalculatorEngine {
 
     _clearEntry() {
         this.currentInput = "0";
+        this.pendingAddSubPercent = null;
+        this.pendingDelta = null;
+        this.pendingPowerBase = null;
+        this.addModeBuffer = "";
         this.onDisplayUpdate("0");
     }
 
     // --- BUSINESS KEYS ---
     _handleBusinessKey(key) {
-        if (!businessLogic) {
-            console.warn("Business Logic not not loaded"); 
-            return;
-        }
-
         if (key === 'RATE') {
             this.awaitingRate = true;
-            this.onDisplayUpdate("RATE");
-            // Clear input so user types fresh rate?
-            this.currentInput = "0";
+            this.currentInput = String(this.taxRate);
             this.isNewSequence = true;
+            this.onDisplayUpdate(this.currentInput);
             return;
         }
 
         // For other keys, we need a numeric input
         let val = parseFloat(this.currentInput);
+        if (isNaN(val) || (this.isNewSequence && this.currentInput === "0")) {
+            const resolved = this._resolveUnaryBaseValue();
+            if (resolved !== null && !isNaN(resolved)) {
+                val = resolved;
+            }
+        }
         if (isNaN(val)) {
             this._triggerError("Error");
             return;
@@ -968,28 +1405,122 @@ class CalculatorEngine {
         try {
             let res;
             if (key === 'MARGIN') {
+                // If cost and sell are present, compute margin
+                if (this.isNewSequence && this.currentInput === "0" && this.costValue !== null && this.sellValue !== null) {
+                    res = computeMargin(this.costValue, this.sellValue);
+                    res = this._applyRounding(res);
+                    this.marginPercent = res;
+                    this.pricingMode = 'margin';
+                    this._addHistoryEntry({
+                        val: res,
+                        symbol: 'MARGIN',
+                        key: 'MARGIN',
+                        type: 'result',
+                        percentSuffix: true,
+                        leadSymbol: '='
+                    });
+                    this.onDisplayUpdate(String(res));
+                    this.currentInput = String(res);
+                    this.isNewSequence = true;
+                    return;
+                }
+
                 // Store margin
                 this.marginPercent = val;
-                this._addHistoryEntry({ val, symbol: 'MG%', key: 'MARGIN' });
+                this.pricingMode = 'margin';
+                this._addHistoryEntry({ val, symbol: 'MARGIN', key: 'MARGIN', type: 'input', percentSuffix: true });
                 this.onDisplayUpdate(String(val));
-                this.currentInput = "0"; // Reset or keep? Usually reset after function
+                this.currentInput = "0";
+                this.isNewSequence = true;
+                return;
+            }
+
+            if (key === 'MARKUP') {
+                // If cost and sell are present, compute markup
+                if (this.isNewSequence && this.currentInput === "0" && this.costValue !== null && this.sellValue !== null) {
+                    res = computeMarkup(this.costValue, this.sellValue);
+                    res = this._applyRounding(res);
+                    this.markupPercent = res;
+                    this.pricingMode = 'markup';
+                    this._addHistoryEntry({
+                        val: res,
+                        symbol: 'MARKUP',
+                        key: 'MARKUP',
+                        type: 'result',
+                        percentSuffix: true,
+                        leadSymbol: '='
+                    });
+                    this.onDisplayUpdate(String(res));
+                    this.currentInput = String(res);
+                    this.isNewSequence = true;
+                    return;
+                }
+
+                // Store markup
+                this.markupPercent = val;
+                this.pricingMode = 'markup';
+                this._addHistoryEntry({ val, symbol: 'MARKUP', key: 'MARKUP', type: 'input', percentSuffix: true });
+                this.onDisplayUpdate(String(val));
+                this.currentInput = "0";
                 this.isNewSequence = true;
                 return;
             }
 
             // Calculations
-            if (key === 'TAX+') res = businessLogic.addTax(val, this.taxRate);
-            else if (key === 'TAX-') res = businessLogic.removeTax(val, this.taxRate);
-            else if (key === 'COST') res = businessLogic.computeCost(val, this.marginPercent);
-            else if (key === 'SELL') res = businessLogic.computeSell(val, this.marginPercent);
+            if (key === 'TAX+') res = addTax(val, this.taxRate);
+            else if (key === 'TAX-') res = removeTax(val, this.taxRate);
+            else if (key === 'COST') {
+                if (this.isNewSequence && this.currentInput === "0" && this.sellValue !== null) {
+                    if (this.pricingMode === 'markup') {
+                        res = computeCostFromMarkup(this.sellValue, this.markupPercent);
+                    } else {
+                        res = computeCost(this.sellValue, this.marginPercent);
+                    }
+                } else {
+                    this.costValue = val;
+                    this._addHistoryEntry({ val, symbol: 'COST', key: 'COST', type: 'input' });
+                    this.onDisplayUpdate(String(val));
+                    this.currentInput = "0";
+                    this.isNewSequence = true;
+                    return;
+                }
+            }
+            else if (key === 'SELL') {
+                if (this.isNewSequence && this.currentInput === "0" && this.costValue !== null) {
+                    if (this.pricingMode === 'markup') {
+                        res = computeSellFromMarkup(this.costValue, this.markupPercent);
+                    } else {
+                        res = computeSell(this.costValue, this.marginPercent);
+                    }
+                } else {
+                    this.sellValue = val;
+                    this._addHistoryEntry({ val, symbol: 'SELL', key: 'SELL', type: 'input' });
+                    this.onDisplayUpdate(String(val));
+                    this.currentInput = "0";
+                    this.isNewSequence = true;
+                    return;
+                }
+            }
             
             // Apply Rounding
             if (res !== undefined) {
-                res = this._applyRounding(res);
-                this._addHistoryEntry({ val: res, symbol: key, key: key });
+                const rounded = this._applyRoundingWithFlag(res);
+                res = rounded.value;
+                const isBusinessResult = key === 'COST' || key === 'SELL' || key === 'MARGIN' || key === 'MARKUP';
+                this._addHistoryEntry({
+                    val: res,
+                    symbol: key,
+                    key: key,
+                    type: 'result',
+                    leadSymbol: isBusinessResult ? '=' : undefined,
+                    percentSuffix: key === 'MARGIN' || key === 'MARKUP',
+                    roundingFlag: rounded.roundingFlag
+                });
                 this.onDisplayUpdate(String(res));
                 this.currentInput = String(res);
                 this.isNewSequence = true;
+                if (key === 'COST') this.costValue = res;
+                if (key === 'SELL') this.sellValue = res;
             }
 
         } catch (e) {
@@ -1003,11 +1534,19 @@ class CalculatorEngine {
         val = parseFloat(Number(val).toPrecision(15));
         
         if (this.settings.isFloat) return val;
-        // Delegate to business logic if available, else simple
-        if (businessLogic && businessLogic.applyRounding) {
-            return businessLogic.applyRounding(val, this.settings.roundingMode, this.settings.decimals);
+        return applyRounding(val, this.settings.roundingMode, this.settings.decimals);
+    }
+
+    _applyRoundingWithFlag(val) {
+        const raw = parseFloat(Number(val).toPrecision(15));
+        if (this.settings.isFloat) {
+            return { value: raw, roundingFlag: null };
         }
-        return val;
+        const rounded = applyRounding(raw, this.settings.roundingMode, this.settings.decimals);
+        let roundingFlag = null;
+        if (rounded > raw) roundingFlag = 'up';
+        else if (rounded < raw) roundingFlag = 'down';
+        return { value: rounded, roundingFlag };
     }
 
     _formatResult(val) {

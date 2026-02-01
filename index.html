@@ -8,14 +8,6 @@
   <link rel="stylesheet" href="calculator.css" />
 </head>
 <body>
-  <div class="settings-bar" id="settings-bar">
-    <button class="settings-toggle" id="settings-toggle" aria-label="Apri impostazioni" type="button">
-      <span aria-hidden="true">⚙</span>
-    </button>
-    <div class="settings-meta" id="settings-meta" aria-live="polite">
-      <div class="settings-build">v0.1.0 build 105</div>
-    </div>
-  </div>
   <div class="app">
     <aside class="left-column">
       <section class="panel calendar-panel">
@@ -66,7 +58,7 @@
             </div>
           </div>
           <div class="fx-chart">
-            <canvas id="fx-chart" width="640" height="260" aria-label="Grafico EUR/USD anno su anno"></canvas>
+            <canvas id="fx-chart" width="500" height="200" aria-label="Grafico EUR/USD anno su anno"></canvas>
           </div>
         </div>
         <div class="trading-panel" id="trading-panel">
@@ -81,12 +73,29 @@
         </div>
       </section>
 
+      <section class="panel status-card" id="status-card">
+        <div class="status-header">
+          <h3>Status</h3>
+          <button class="settings-toggle" id="settings-toggle" aria-label="Apri impostazioni" type="button">
+            <span aria-hidden="true">⚙</span>
+          </button>
+        </div>
+        <div class="status-meta" id="settings-meta" aria-live="polite">
+          <div class="settings-build">v0.2.0 build 122</div>
+        </div>
+      </section>
+
       <section class="panel calculator-panel" id="calculator-panel">
-        <header class="panel-header">
-          <p>Calcolatrice Olivetti Logos replica</p>
+        <header class="panel-header panel-tabs" role="tablist">
+          <button class="tab-btn active" data-tab="calculator" role="tab" aria-selected="true" type="button">Calcolatrice</button>
+          <button class="tab-btn" data-tab="calc-sheet" role="tab" aria-selected="false" type="button">Calc Sheet</button>
+          <button class="tab-btn" data-tab="time-date" role="tab" aria-selected="false" type="button">Time & Date Calc</button>
+          <button class="tab-btn" data-tab="utility" role="tab" aria-selected="false" type="button">Utility</button>
         </header>
 
-        <div class="calculator-wrapper" tabindex="0">
+        <div class="tab-panels">
+          <section class="tab-panel active" data-tab-panel="calculator">
+            <div class="calculator-wrapper" tabindex="0">
           <!-- Corpo Macchina -->
           <div class="calc-body">
             <!-- Focus LED -->
@@ -128,13 +137,15 @@
                     <!-- F per Floating -->
                     <span class="switch-label">DEC</span>
                     <!-- 5 posizioni: 0, 2, 4, 6, F -->
-                    <input type="range" class="switch-slider" id="switch-dec" min="0" max="4" step="1" value="1">
+                    <input type="range" class="switch-slider" id="switch-dec" min="0" max="6" step="1" value="2">
                     <div class="switch-ticks switch-ticks-dec">
-                        <span>0</span>
-                        <span>2</span>
-                        <span>4</span>
-                        <span>6</span>
-                        <span>F</span>
+                      <span>+</span>
+                      <span>0</span>
+                      <span>2</span>
+                      <span>3</span>
+                      <span>4</span>
+                      <span>6</span>
+                      <span>F</span>
                     </div>
                 </div>
 
@@ -165,6 +176,7 @@
                   <button class="key-btn key-rect key-gray" data-key="COST">COST</button>
                   <button class="key-btn key-rect key-gray" data-key="SELL">SELL</button>
                   <button class="key-btn key-rect key-gray" data-key="MARGIN">MARGIN</button>
+                  <button class="key-btn key-rect key-gray" data-key="MARKUP">MARKUP</button>
                   <button class="key-btn key-rect key-gray" data-key="TAX+">TAX+</button>
                   <button class="key-btn key-rect key-gray" data-key="TAX-">TAX-</button>
                   <button class="key-btn key-rect key-gray" data-key="RATE">RATE</button>
@@ -241,6 +253,39 @@
               <!-- JS will append rows here -->
             </div>
           </div>
+            </div>
+          </section>
+
+          <section class="tab-panel" data-tab-panel="calc-sheet">
+            <div class="panel-header small">
+              <h2>Calc Sheet</h2>
+              <p class="hint">Foglio di calcolo minimale (in preparazione).</p>
+            </div>
+            <div class="tab-placeholder">
+              <p>Spazio riservato al foglio di calcolo.</p>
+            </div>
+          </section>
+
+          <section class="tab-panel" data-tab-panel="time-date">
+            <div class="panel-header small">
+              <h2>Time & Date Calc</h2>
+              <p class="hint">Strumenti per calcoli temporali (in preparazione).</p>
+            </div>
+            <div class="tab-placeholder">
+              <p>Spazio riservato ai calcoli su date e orari.</p>
+            </div>
+          </section>
+
+          <section class="tab-panel" data-tab-panel="utility">
+            <div class="panel-header small">
+              <h2>Utility</h2>
+              <p class="hint">Utility rapide (in preparazione).</p>
+            </div>
+            <div class="tab-placeholder">
+              <p>Spazio riservato alle utility.</p>
+            </div>
+          </section>
+
         </div>
       </section>
 
@@ -283,7 +328,6 @@
 
   <script src="moon.js"></script>
   <script src="script.js"></script>
-  <script src="business.js"></script>
   <script src="calculator-engine.js"></script>
   <script src="calculator.js"></script>
 </body>
