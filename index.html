@@ -6,6 +6,7 @@
   <title>Dashboard</title>
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="calculator.css" />
+  <link rel="stylesheet" href="calc-sheet.css" />
 </head>
 <body>
   <div class="app">
@@ -78,7 +79,7 @@
           </button>
         </div>
         <div class="status-meta" id="settings-meta" aria-live="polite">
-          <div class="settings-build">v0.2.0 build 122</div>
+          <div class="settings-build">v0.3.1 build 310</div>
         </div>
       </section>
 
@@ -254,12 +255,22 @@
           </section>
 
           <section class="tab-panel" data-tab-panel="calc-sheet">
-            <div class="panel-header small">
-              <h2>Calc Sheet</h2>
-              <p class="hint">Foglio di calcolo minimale (in preparazione).</p>
-            </div>
-            <div class="tab-placeholder">
-              <p>Spazio riservato al foglio di calcolo.</p>
+            <div class="calc-sheet-wrap">
+              <div class="calc-sheet-toolbar" data-calc-sheet-toolbar role="toolbar" aria-label="Formattazione celle">
+                <button class="sheet-tool" type="button" data-sheet-action="bold" aria-pressed="false">B</button>
+                <button class="sheet-tool" type="button" data-sheet-action="color" data-color="black" aria-pressed="false">
+                  Nero
+                </button>
+                <button class="sheet-tool" type="button" data-sheet-action="color" data-color="blue" aria-pressed="false">
+                  Blu
+                </button>
+                <button class="sheet-tool" type="button" data-sheet-action="color" data-color="red" aria-pressed="false">
+                  Rosso
+                </button>
+                <div class="calc-sheet-formula" data-sheet-formula aria-live="polite"></div>
+                <span class="calc-sheet-save" data-sheet-save aria-hidden="true"></span>
+              </div>
+              <div class="calc-sheet calc-sheet-grid" data-calc-sheet aria-label="Foglio elettronico minimale"></div>
             </div>
           </section>
 
@@ -327,5 +338,6 @@
   <script src="script.js"></script>
   <script src="calculator-engine.js"></script>
   <script src="calculator.js"></script>
+  <script src="calc-sheet.js"></script>
 </body>
 </html>

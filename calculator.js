@@ -566,6 +566,16 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function handleKeyboard(event) {
+        const target = event.target;
+        if (target) {
+            const tagName = target.tagName;
+            const isFormField = tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT';
+            const inSheet = typeof target.closest === 'function' &&
+                (target.closest('[data-calc-sheet]') || target.closest('[data-calc-sheet-toolbar]'));
+            if (isFormField || target.isContentEditable || inSheet) {
+                return;
+            }
+        }
         if (isTextMode) {
             event.preventDefault();
             handleInput(event.key, true);
@@ -708,6 +718,16 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function handleKeyboardUp(event) {
+        const target = event.target;
+        if (target) {
+            const tagName = target.tagName;
+            const isFormField = tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT';
+            const inSheet = typeof target.closest === 'function' &&
+                (target.closest('[data-calc-sheet]') || target.closest('[data-calc-sheet-toolbar]'));
+            if (isFormField || target.isContentEditable || inSheet) {
+                return;
+            }
+        }
         const action = mapKeyboardToAction(event);
         setKeyActive(action, false);
     }
