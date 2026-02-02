@@ -1,37 +1,28 @@
 # Dashboard Local
 
-Dashboard interattiva con funzionalità di calcolatrice, visualizzazione valute e calendario.
+Dashboard with calendar, Eur<>USD exchange, calculator, sheet and eventually some other utility.
 
-## Pubblicazione Automatica su GitHub Pages
+## GitHub Pages
 
-Questo repository è configurato per la pubblicazione automatica su GitHub Pages tramite GitHub Actions.
+This repository it's automatically published on GitHub Pages.
 
-### Come Attivare GitHub Pages
+## Disclaimer ⚠️
 
-Per attivare la pubblicazione automatica del sito, segui questi passaggi:
+This is a personal project for my work environment, currently under development. There is no guarantee that the page will work as expected; you have been warned!
 
-1. Vai alle **Settings** (Impostazioni) del repository su GitHub
-2. Nel menu laterale, clicca su **Pages**
-3. Nella sezione **Source** (Origine), seleziona:
-   - **Source**: Deploy from a branch → cambia in **GitHub Actions**
-4. Salva le modificazioni
+## Notes about calculator
 
-### Funzionamento
+The calculator is a highly customized imitation of the Olivetti business desktop calculators from the 1970s and 1980s, but don't expect it to work exactly like those!
 
-Dopo la configurazione:
-- Ogni commit pushato sul branch `main` attiverà automaticamente il workflow di deployment
-- Il workflow si trova in `.github/workflows/deploy.yml`
-- Il sito verrà pubblicato su `https://<username>.github.io/dashboard.local/`
-- Puoi monitorare lo stato del deployment nella tab **Actions** del repository
+### Project structure
 
-### Struttura del Progetto
+- `index.html` - Main page
+- `styles.css` - General style
+- `calculator.css` - Style for calculator
+- `calc-sheet.css` - Style for calc sheet
+- `script.js` - Main script
+- `calculator.js` - Calculator logic and interactions
+- `calculator-engine.js` - Calculator engine
+- `calc-sheet.js` - Function for calc sheet
+- `moon.js` - Moon phase functions
 
-- `index.html` - Pagina principale
-- `styles.css` - Stili principali
-- `calculator.css` - Stili calcolatrice
-- `calc-sheet.css` - Stili foglio di calcolo
-- `script.js` - Script principale
-- `calculator.js` - Logica calcolatrice
-- `calculator-engine.js` - Engine calcolatrice
-- `calc-sheet.js` - Logica foglio di calcolo
-- `moon.js` - Visualizzazione fasi lunari

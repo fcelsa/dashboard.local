@@ -109,7 +109,7 @@ function buildMonthCard(date) {
   weekdays.className = "weekdays";
   const weekSpacer = document.createElement("span");
   weekSpacer.className = "week-label";
-  weekSpacer.textContent = "Wk";
+  weekSpacer.textContent = "s.";
   weekdays.appendChild(weekSpacer);
   weekdayLabels.forEach((label, index) => {
     const span = document.createElement("span");
@@ -135,7 +135,22 @@ function buildMonthCard(date) {
     weekCount++;
     const weekCell = document.createElement("div");
     weekCell.className = "week-number";
-    weekCell.textContent = getISOWeekNumber(current);
+    // Determina se questa è la settimana corrente
+    const currentWeekNumber = getISOWeekNumber(current);
+    const todayWeekNumber = getISOWeekNumber(today);
+    const isCurrentWeek =
+      currentWeekNumber === todayWeekNumber &&
+      current.getFullYear() === today.getFullYear();
+    // Crea il dot se è la settimana corrente
+    if (isCurrentWeek) {
+      const dot = document.createElement("span");
+      dot.textContent = "• ";
+      dot.className = "week-dot";
+      weekCell.appendChild(dot);
+    }
+    const weekNumberText = document.createElement("span");
+    weekNumberText.textContent = getISOWeekNumber(current);
+    weekCell.appendChild(weekNumberText);
     daysGrid.appendChild(weekCell);
 
     for (let i = 0; i < 7; i += 1) {

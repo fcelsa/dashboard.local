@@ -207,7 +207,9 @@ function getIllumination(phaseFraction) {
 }
 
 function formatShortDateTime(date) {
-  return date.toLocaleString("it-IT", {
+  const giorni = ["Dom.", "Lun.", "Mar.", "Mer.", "Gio.", "Ven.", "Sab."];
+  const giornoSettimana = giorni[date.getDay()];
+  const dataString = date.toLocaleString("it-IT", {
     day: "2-digit",
     month: "short",
     hour: "2-digit",
@@ -215,6 +217,7 @@ function formatShortDateTime(date) {
     hourCycle: "h23",
     timeZone: "Europe/Rome",
   });
+  return `${giornoSettimana} ${dataString}`;
 }
 
 function renderMoonPhase() {
@@ -239,11 +242,11 @@ function renderMoonPhase() {
   // Se la fase è < 50% (crescente), l'evento clou è la Luna Piena.
   // Se la fase è > 50% (calante), l'evento clou è la Luna Nuova.
   
-  if (status.phaseFraction < 0.5) {
-     subtitle.textContent = `Prossima luna piena: ${formatShortDateTime(status.nextFullMoon)}`;
-  } else {
-     subtitle.textContent = `Prossima luna nuova: ${formatShortDateTime(status.nextNewMoon)}`;
-  }
+    if (status.phaseFraction < 0.5) {
+      subtitle.textContent = `Prossima luna piena:\n${formatShortDateTime(status.nextFullMoon)}`;
+    } else {
+      subtitle.textContent = `Prossima luna nuova:\n${formatShortDateTime(status.nextNewMoon)}`;
+    }
 }
 
 // Avvia
