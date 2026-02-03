@@ -19,6 +19,19 @@
   let activeCellId = null;
   let saveTimer = null;
   let hasPendingSave = false;
+  let copyBuffer = null;
+  let selectionAnchor = null;
+  let selectionEnd = null;
+  let isSelecting = false;
+
+  const contextMenu = document.createElement("div");
+  contextMenu.className = "sheet-context-menu";
+  contextMenu.innerHTML = `
+    <button type="button" data-menu-action="copy">Copia</button>
+    <button type="button" data-menu-action="paste">Incolla</button>
+    <button type="button" data-menu-action="cut">Taglia</button>
+  `;
+  document.body.appendChild(contextMenu);
 
   const corner = document.createElement("div");
   corner.className = "calc-sheet-cell header corner";
@@ -85,10 +98,73 @@
     });
   }
 
+  document.addEventListener("mouseup", () => {
+    isSelecting = false;
+  });
+
+  document.addEventListener("mousedown", (event) => {
+    if (!contextMenu.contains(event.target)) {
+      hideContextMenu();
+    }
+  });
+
+  contextMenu.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-menu-action]");
+    if (!button) return;
+    const action = button.dataset.menuAction;
+    if (action === "copy") {
+      copySelectionRange();
+    } else if (action === "cut") {
+      cutSelectionRange();
+    } else if (action === "paste") {
+      pasteSelectionRange();
+    }
+    hideContextMenu();
+  });
+
   function attachCellHandlers(cell) {
+    cell.addEventListener("mousedown", (event) => {
+      if (event.button !== 0) return;
+      if (!cell.classList.contains("is-view")) return;
+      isSelecting = true;
+      const cellId = cell.dataset.cell;
+      if (event.shiftKey && selectionAnchor) {
+        selectionEnd = cellId;
+      } else {
+        selectionAnchor = cellId;
+        selectionEnd = cellId;
+      }
+      applySelection();
+    });
+
+    cell.addEventListener("mouseover", () => {
+      if (!isSelecting) return;
+      const cellId = cell.dataset.cell;
+      selectionEnd = cellId;
+      applySelection();
+    });
+
+    cell.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      const cellId = cell.dataset.cell;
+      if (!isCellInSelection(cellId)) {
+        selectionAnchor = cellId;
+        selectionEnd = cellId;
+        applySelection();
+      }
+      activeCellId = cellId;
+      setActiveCell(cell);
+      updateToolbarState();
+      updateFormulaBar(cellId);
+      showContextMenu(event.clientX, event.clientY);
+    });
+
     cell.addEventListener("focus", () => {
       activeCellId = cell.dataset.cell;
       setActiveCell(cell);
+      selectionAnchor = activeCellId;
+      selectionEnd = activeCellId;
+      applySelection();
       cell.classList.add("is-view");
       cell.textContent = formatDisplayValue(getRawValue(activeCellId));
       applyCellStyle(cell, getCellEntry(activeCellId));
@@ -243,6 +319,136 @@
     }
   }
 
+  function getSelectionRange() {
+    const anchorId = selectionAnchor || activeCellId;
+    const endId = selectionEnd || selectionAnchor || activeCellId;
+    if (!anchorId || !endId) return null;
+    const anchor = parseCellId(anchorId);
+    const end = parseCellId(endId);
+    if (!anchor || !end) return null;
+
+    const startRow = Math.min(anchor.row, end.row);
+    const endRow = Math.max(anchor.row, end.row);
+    const startCol = Math.min(anchor.col, end.col);
+    const endCol = Math.max(anchor.col, end.col);
+    return {
+      startRow,
+      endRow,
+      startCol,
+      endCol,
+      rows: endRow - startRow + 1,
+      cols: endCol - startCol + 1,
+    };
+  }
+
+  function applySelection() {
+    const range = getSelectionRange();
+    if (!range) return;
+    cellElements.forEach((cell, cellId) => {
+      const position = parseCellId(cellId);
+      if (!position) return;
+      const isSelected =
+        position.row >= range.startRow &&
+        position.row <= range.endRow &&
+        position.col >= range.startCol &&
+        position.col <= range.endCol;
+      cell.classList.toggle("is-selected", isSelected);
+    });
+  }
+
+  function isCellInSelection(cellId) {
+    const range = getSelectionRange();
+    if (!range) return false;
+    const position = parseCellId(cellId);
+    if (!position) return false;
+    return (
+      position.row >= range.startRow &&
+      position.row <= range.endRow &&
+      position.col >= range.startCol &&
+      position.col <= range.endCol
+    );
+  }
+
+  function showContextMenu(x, y) {
+    contextMenu.style.left = `${x}px`;
+    contextMenu.style.top = `${y}px`;
+    contextMenu.classList.add("is-visible");
+  }
+
+  function hideContextMenu() {
+    contextMenu.classList.remove("is-visible");
+  }
+
+  function copySelectionRange() {
+    const range = getSelectionRange();
+    if (!range) return;
+    const { startRow, startCol, rows, cols } = range;
+    const values = Array.from({ length: rows }, () => Array.from({ length: cols }, () => ""));
+
+    for (let r = 0; r < rows; r += 1) {
+      for (let c = 0; c < cols; c += 1) {
+        const cellId = `${columnLabels[startCol + c]}${startRow + r}`;
+        values[r][c] = getRawValue(cellId);
+      }
+    }
+
+    copyBuffer = {
+      rows,
+      cols,
+      origin: { row: startRow, col: startCol },
+      values,
+    };
+  }
+
+  function cutSelectionRange() {
+    const range = getSelectionRange();
+    if (!range) return;
+    copySelectionRange();
+    const { startRow, startCol, rows, cols } = range;
+    for (let r = 0; r < rows; r += 1) {
+      for (let c = 0; c < cols; c += 1) {
+        const cellId = `${columnLabels[startCol + c]}${startRow + r}`;
+        setRawValue(cellId, "");
+      }
+    }
+    refreshAllCells();
+    if (activeCellId) updateFormulaBar(activeCellId);
+  }
+
+  function pasteSelectionRange() {
+    if (!copyBuffer) return;
+    const range = getSelectionRange();
+    if (!range) return;
+
+    const { startRow, startCol, rows, cols } = range;
+    const { origin, values, rows: srcRows, cols: srcCols } = copyBuffer;
+
+    for (let r = 0; r < rows; r += 1) {
+      for (let c = 0; c < cols; c += 1) {
+        const targetRow = startRow + r;
+        const targetCol = startCol + c;
+        if (targetRow < 1 || targetRow > ROWS) continue;
+        if (targetCol < 0 || targetCol >= COLS) continue;
+
+        const sourceRowOffset = r % srcRows;
+        const sourceColOffset = c % srcCols;
+        const sourceRaw = values[sourceRowOffset]?.[sourceColOffset] ?? "";
+
+        const sourceCellRow = origin.row + sourceRowOffset;
+        const sourceCellCol = origin.col + sourceColOffset;
+        const deltaRow = targetRow - sourceCellRow;
+        const deltaCol = targetCol - sourceCellCol;
+
+        const nextValue = translateFormula(sourceRaw, deltaRow, deltaCol);
+        const targetId = `${columnLabels[targetCol]}${targetRow}`;
+        setRawValue(targetId, nextValue);
+      }
+    }
+
+    refreshAllCells();
+    if (activeCellId) updateFormulaBar(activeCellId);
+  }
+
   function setActiveCell(cell) {
     cellElements.forEach((item) => item.classList.remove("is-active"));
     cell.classList.add("is-active");
@@ -344,7 +550,12 @@
   function evaluateFormula(expression, stack = []) {
     if (!expression) return NaN;
 
-    const withValues = expression.replace(/\b([A-K])([1-9]|[12][0-9]|3[0-2])\b/g, (match, col, row) => {
+    const withSum = expression.replace(/SUM\(([^)]+)\)/gi, (_, args) => {
+      const sum = computeSum(args, stack);
+      return Number.isFinite(sum) ? String(sum) : "NaN";
+    });
+
+    const withValues = withSum.replace(/\b([A-K])([1-9]|[12][0-9]|3[0-2])\b/g, (match, col, row) => {
       const cellId = `${col}${row}`;
       const value = getNumericValue(cellId, stack);
       return Number.isFinite(value) ? String(value) : "NaN";
@@ -360,6 +571,55 @@
     } catch {
       return NaN;
     }
+  }
+
+  function computeSum(args, stack) {
+    if (!args) return 0;
+    const tokens = args
+      .split(/[,;]+/)
+      .map((token) => token.trim())
+      .filter(Boolean);
+    let sum = 0;
+
+    tokens.forEach((token) => {
+      const rangeMatch = /^([A-K])([1-9]|[12][0-9]|3[0-2])\s*:\s*([A-K])([1-9]|[12][0-9]|3[0-2])$/i.exec(
+        token
+      );
+      if (rangeMatch) {
+        const startCol = columnLabels.indexOf(rangeMatch[1].toUpperCase());
+        const startRow = Number.parseInt(rangeMatch[2], 10);
+        const endCol = columnLabels.indexOf(rangeMatch[3].toUpperCase());
+        const endRow = Number.parseInt(rangeMatch[4], 10);
+        if (startCol < 0 || endCol < 0) return;
+        const colFrom = Math.min(startCol, endCol);
+        const colTo = Math.max(startCol, endCol);
+        const rowFrom = Math.min(startRow, endRow);
+        const rowTo = Math.max(startRow, endRow);
+        for (let row = rowFrom; row <= rowTo; row += 1) {
+          for (let col = colFrom; col <= colTo; col += 1) {
+            const cellId = `${columnLabels[col]}${row}`;
+            const value = getNumericValue(cellId, stack);
+            if (Number.isFinite(value)) sum += value;
+          }
+        }
+        return;
+      }
+
+      const singleMatch = /^([A-K])([1-9]|[12][0-9]|3[0-2])$/i.exec(token);
+      if (singleMatch) {
+        const cellId = `${singleMatch[1].toUpperCase()}${singleMatch[2]}`;
+        const value = getNumericValue(cellId, stack);
+        if (Number.isFinite(value)) sum += value;
+        return;
+      }
+
+      if (isNumericString(token)) {
+        const value = Number.parseFloat(normalizeDecimal(token));
+        if (Number.isFinite(value)) sum += value;
+      }
+    });
+
+    return round3(sum);
   }
 
   function getNumericValue(cellId, stack) {
@@ -388,6 +648,22 @@
 
   function normalizeDecimal(value) {
     return value.replace(/\./g, ",").replace(",", ".");
+  }
+
+  function translateFormula(raw, deltaRow, deltaCol) {
+    if (!raw || !raw.startsWith("=")) return raw;
+    return raw.replace(/\b([A-K])([1-9]|[12][0-9]|3[0-2])\b/g, (match, col, row) => {
+      const colIndex = columnLabels.indexOf(col);
+      if (colIndex < 0) return match;
+      let nextCol = colIndex + deltaCol;
+      let nextRow = Number.parseInt(row, 10) + deltaRow;
+      if (Number.isNaN(nextRow)) return match;
+      if (nextCol < 0) nextCol = 0;
+      if (nextCol >= COLS) nextCol = COLS - 1;
+      if (nextRow < 1) nextRow = 1;
+      if (nextRow > ROWS) nextRow = ROWS;
+      return `${columnLabels[nextCol]}${nextRow}`;
+    });
   }
 
   function colorToValue(color) {
