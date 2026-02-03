@@ -502,6 +502,55 @@ body.show-settings .settings-panel {
   max-width: 780px;
 }
 
+.calendar-context-menu {
+  position: fixed;
+  z-index: 999;
+  display: none;
+  flex-direction: column;
+  min-width: 220px;
+  padding: 8px;
+  border-radius: 12px;
+  background: #101820;
+  border: 1px solid rgba(122, 166, 194, 0.35);
+  box-shadow: 0 10px 26px rgba(10, 15, 20, 0.35);
+  font-family: "Droid Sans Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    monospace;
+  font-size: 0.7rem;
+  color: #e7f0f6;
+}
+
+.calendar-context-menu.is-visible {
+  display: flex;
+}
+
+.calendar-context-header {
+  padding: 6px 8px 8px;
+  font-weight: 700;
+  color: #e7f0f6;
+  white-space: nowrap;
+}
+
+.calendar-context-divider {
+  height: 1px;
+  background: rgba(122, 166, 194, 0.25);
+  margin: 2px 6px 6px;
+}
+
+.calendar-context-menu button {
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  color: #e7f0f6;
+}
+
+.calendar-context-menu button:hover {
+  background: rgba(122, 166, 194, 0.18);
+}
+
 .status-card {
   grid-area: status;
   background: linear-gradient(150deg, var(--panel), #1d222c);

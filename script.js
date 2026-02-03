@@ -20,18 +20,16 @@ const fxKeyStatus = document.getElementById("fx-key-status");
 const fxKeyClearBtn = document.getElementById("clear-freecurrency-key");
 const tabButtons = document.querySelectorAll(".tab-btn");
 const tabPanels = document.querySelectorAll(".tab-panel");
+const calendarContextMenu = document.createElement("div");
 
 let fxHistory = null;
 let fxChartSize = { width: 0, height: 0 };
 let fxMiniSize = { width: 0, height: 0 };
+let fxChartEntries = [];
+let fxHoverIndex = null;
 let freeCurrencyKey = null;
 const fxSessionKey = "fxLatestSession";
 const freeCurrencyCookieKey = "freeCurrencyApiKey";
-// API keys are read from `api-keys` or environment/window variables at runtime
-
-// No hardcoded API keys: prefer `api-keys`, then localStorage/window.
-
-// If the page provides keys via `window`, `loadApiKey()` will read them directly; no automatic persistence.
 
 const weekdayLabels = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
 const monthNames = [
@@ -49,9 +47,30 @@ const monthNames = [
   "Dicembre",
 ];
 
+const weekdayNames = [
+  "Domenica",
+  "Lunedì",
+  "Martedì",
+  "Mercoledì",
+  "Giovedì",
+  "Venerdì",
+  "Sabato",
+];
+
 let startOffset = -1;
 const visibleMonths = 6;
 let isScrolling = false;
+let calendarMenuDate = null;
+
+calendarContextMenu.className = "calendar-context-menu";
+calendarContextMenu.innerHTML = `
+  <div class="calendar-context-header" data-calendar-header></div>
+  <div class="calendar-context-divider"></div>
+  <button type="button" data-calendar-action="check">Controlla</button>
+  <button type="button" data-calendar-action="add">Aggiungi</button>
+  <button type="button" data-calendar-action="delete">Cancella</button>
+`;
+document.body.appendChild(calendarContextMenu);
 
 // --- CALENDARIO ---
 function getMonthKey(date) {
@@ -167,6 +186,12 @@ function buildMonthCard(date) {
         cell.textContent = "";
       } else {
         cell.textContent = dayDate.getDate();
+        cell.dataset.date = formatDateLocal(dayDate);
+        cell.addEventListener("contextmenu", (event) => {
+          event.preventDefault();
+          calendarMenuDate = new Date(dayDate.getTime());
+          showCalendarContextMenu(event.clientX, event.clientY, calendarMenuDate);
+        });
       }
 
       if (
@@ -323,6 +348,33 @@ function scheduleMinuteRefresh() {
 
 function formatDate(date) {
   return date.toISOString().slice(0, 10);
+}
+
+function formatDateLocal(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function formatCalendarLabel(date) {
+  const weekday = weekdayNames[date.getDay()] || "";
+  const month = monthNames[date.getMonth()] || "";
+  return `${weekday} ${date.getDate()} ${month} ${date.getFullYear()}`;
+}
+
+function showCalendarContextMenu(x, y, date) {
+  const header = calendarContextMenu.querySelector("[data-calendar-header]");
+  if (header) {
+    header.textContent = formatCalendarLabel(date);
+  }
+  calendarContextMenu.style.left = `${x}px`;
+  calendarContextMenu.style.top = `${y}px`;
+  calendarContextMenu.classList.add("is-visible");
+}
+
+function hideCalendarContextMenu() {
+  calendarContextMenu.classList.remove("is-visible");
 }
 
 // --- CLOCK / TIME ---
@@ -734,9 +786,15 @@ function drawFxChart() {
   ctx.clearRect(0, 0, width, height);
 
   const entries = Object.entries(fxHistory)
-    .map(([date, value]) => ({ date, rate: value.USD }))
-    .filter((entry) => typeof entry.rate === "number")
+    .map(([date, value]) => {
+      const raw = value?.USD;
+      const rate = typeof raw === "number" ? raw : parseFloat(raw);
+      return { date, rate };
+    })
+    .filter((entry) => Number.isFinite(entry.rate))
     .sort((a, b) => a.date.localeCompare(b.date));
+
+  fxChartEntries = entries;
 
   if (!entries.length) return;
 
@@ -782,6 +840,49 @@ function drawFxChart() {
   });
   ctx.stroke();
 
+  if (fxHoverIndex !== null && entries[fxHoverIndex]) {
+    const entry = entries[fxHoverIndex];
+    const x = padding + fxHoverIndex * scaleX;
+    const y = height - padding - (entry.rate - min) * scaleY;
+
+    ctx.strokeStyle = "rgba(155, 179, 168, 0.5)";
+    ctx.lineWidth = 1 * ratio;
+    ctx.beginPath();
+    ctx.moveTo(x, padding);
+    ctx.lineTo(x, height - padding);
+    ctx.stroke();
+
+    ctx.fillStyle = "#7aa6c2";
+    ctx.beginPath();
+    ctx.arc(x, y, 3.5 * ratio, 0, Math.PI * 2);
+    ctx.fill();
+
+    const tooltipText = `${entry.date}  ·  ${entry.rate.toFixed(4)}`;
+    ctx.font = `${11 * ratio}px "Droid Sans Mono", monospace`;
+    const textWidth = ctx.measureText(tooltipText).width;
+    const padX = 8 * ratio;
+    const padY = 6 * ratio;
+    const boxWidth = textWidth + padX * 2;
+    const boxHeight = 22 * ratio;
+
+    let boxX = x - boxWidth / 2;
+    boxX = Math.max(padding, Math.min(boxX, width - padding - boxWidth));
+    const boxY = Math.max(padding, y - boxHeight - 10 * ratio);
+
+    ctx.fillStyle = "rgba(16, 25, 32, 0.9)";
+    ctx.strokeStyle = "rgba(122, 166, 194, 0.6)";
+    ctx.lineWidth = 1 * ratio;
+    ctx.beginPath();
+    ctx.rect(boxX, boxY, boxWidth, boxHeight);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = "#e7f0f6";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(tooltipText, boxX + boxWidth / 2, boxY + boxHeight / 2 + 0.5 * ratio);
+  }
+
   const avg = rates.reduce((sum, value) => sum + value, 0) / rates.length;
   const avgY = height - padding - (avg - min) * scaleY;
   ctx.setLineDash([6 * ratio, 6 * ratio]);
@@ -798,8 +899,10 @@ function drawFxChart() {
   weekStart.setDate(now.getDate() - 6);
   const monthStart = new Date(now);
   monthStart.setMonth(now.getMonth() - 1);
-  const weekEntries = entries.filter((entry) => entry.date >= formatDate(weekStart));
-  const monthEntries = entries.filter((entry) => entry.date >= formatDate(monthStart));
+  const weekStartKey = formatDateLocal(weekStart);
+  const monthStartKey = formatDateLocal(monthStart);
+  const weekEntries = entries.filter((entry) => entry.date >= weekStartKey);
+  const monthEntries = entries.filter((entry) => entry.date >= monthStartKey);
   const weekAvg =
     weekEntries.reduce((sum, entry) => sum + entry.rate, 0) / Math.max(weekEntries.length, 1);
   const monthAvg =
@@ -821,6 +924,45 @@ function drawFxChart() {
   );
 
   ctx.fillText(`Media periodo: ${avg.toFixed(4)}`, width / 2, avgY - 6 * ratio);
+}
+
+function setupFxChartTooltip() {
+  if (!fxChartEl) return;
+
+  fxChartEl.addEventListener("mousemove", (event) => {
+    if (!fxChartEntries.length) return;
+    const rect = fxChartEl.getBoundingClientRect();
+    const ratio = window.devicePixelRatio || 1;
+    const width = fxChartEl.width;
+    const height = fxChartEl.height;
+    const padding = 22 * ratio;
+    const chartWidth = width - padding * 2;
+
+    const x = (event.clientX - rect.left) * ratio;
+    if (x < padding || x > width - padding) {
+      if (fxHoverIndex !== null) {
+        fxHoverIndex = null;
+        drawFxChart();
+      }
+      return;
+    }
+
+    const scaleX = chartWidth / Math.max(fxChartEntries.length - 1, 1);
+    const index = Math.round((x - padding) / scaleX);
+    const clamped = Math.max(0, Math.min(index, fxChartEntries.length - 1));
+
+    if (fxHoverIndex !== clamped) {
+      fxHoverIndex = clamped;
+      drawFxChart();
+    }
+  });
+
+  fxChartEl.addEventListener("mouseleave", () => {
+    if (fxHoverIndex !== null) {
+      fxHoverIndex = null;
+      drawFxChart();
+    }
+  });
 }
 
 // --- FX CHART (INTRADAY) ---
@@ -919,6 +1061,17 @@ function scheduleIntradayRefresh() {
 // --- INIT / LISTENERS ---
 function initDashboard() {
   monthsContainer.addEventListener("wheel", handleWheel, { passive: false });
+  document.addEventListener("mousedown", (event) => {
+    if (!calendarContextMenu.contains(event.target)) {
+      hideCalendarContextMenu();
+    }
+  });
+
+  calendarContextMenu.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-calendar-action]");
+    if (!button) return;
+    hideCalendarContextMenu();
+  });
   monthsContainer.addEventListener("mousedown", (event) => {
     if (event.button !== 1) return;
     event.preventDefault();
@@ -936,6 +1089,7 @@ function initDashboard() {
   scheduleFxHistoryRefresh();
   resizeFxChart();
   resizeFxMiniChart();
+  setupFxChartTooltip();
 
   window.addEventListener("resize", () => {
     resizeFxChart();
