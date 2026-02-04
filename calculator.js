@@ -4,10 +4,17 @@ document.addEventListener("DOMContentLoaded", () => {
     const vfdDisplay = document.getElementById("vfd-display");
     const vfdDisplayWrap = document.querySelector(".vfd-display");
     const vfdStack = document.getElementById("vfd-stack");
+    const calculatorWrapper = document.querySelector(".calculator-wrapper");
     const paperTape = document.getElementById("paper-tape");
     const keys = document.querySelectorAll(".key-btn");
     const iconMem = document.getElementById("icon-mem");
     const iconGT = document.getElementById("icon-gt");
+    const iconGTValue = document.getElementById("icon-gt-value");
+    const iconK = document.getElementById("icon-k");
+    const iconKValue = document.getElementById("icon-k-value");
+    const iconTapeCount = document.getElementById("icon-tape-count");
+    const iconOperator = document.getElementById("icon-operator");
+    const iconBusiness = document.getElementById("icon-business");
     const keyButtonsMap = new Map();
     
     // Switch Elements
@@ -102,6 +109,12 @@ document.addEventListener("DOMContentLoaded", () => {
     let pendingGTTimeout = null;
     let pendingRateInput = false;
     let pendingRateTimeout = null;
+    let pendingKInput = false;
+    let pendingKTimeout = null;
+    // --- FOCUS STATE ---
+    const isCalculatorFocused = () => Boolean(
+        calculatorWrapper && (calculatorWrapper.matches(':hover') || calculatorWrapper.matches(':focus-within'))
+    );
 
     // --- ENGINE ---
     // Ensure CalculatorEngine is loaded
@@ -130,24 +143,37 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!paperTape) return;
         paperTape.innerHTML = ''; // Clear
         entries.forEach(entry => renderSingleEntry(entry));
+        updateTapeCount();
+        const lastEntry = entries[entries.length - 1];
+        if (lastEntry?.type === 'result') {
+            updateOperatorIndicator('=');
+            setBusinessIndicator(businessKeys.has(lastEntry.key));
+        } else if (lastEntry?.symbol) {
+            updateOperatorIndicator(lastEntry.symbol);
+            setBusinessIndicator(false);
+        }
     };
 
     engine.onStatusUpdate = (status) => {
-        const iconI = document.getElementById("icon-acc1");
-        const iconII = document.getElementById("icon-acc2");
-        const iconE = document.getElementById("icon-error");
         const iconMinus = document.getElementById("icon-minus");
-
-        if (iconI) iconI.className = status.acc1 ? "vfd-icon on" : "vfd-icon off";
-        if (iconII) iconII.className = status.acc2 ? "vfd-icon on" : "vfd-icon off";
         if (iconGT) {
             iconGT.classList.toggle("on", status.gt);
             iconGT.classList.toggle("off", !status.gt);
         }
-        if (iconE) iconE.className = status.error ? "vfd-icon on" : "vfd-icon off";
+        if (iconGTValue) {
+            const gtValue = engine?.grandTotal ?? 0;
+            iconGTValue.textContent = status.gt ? formatNumber(gtValue) : "";
+        }
         if (iconMinus) iconMinus.className = status.minus ? "vfd-icon on" : "vfd-icon off";
+        if (iconK) {
+            const hasKValue = status.k !== null && status.k !== 0;
+            iconK.classList.toggle("on", hasKValue);
+            iconK.classList.toggle("off", !hasKValue);
+        }
+        if (iconKValue) {
+            iconKValue.textContent = status.k !== null && status.k !== 0 ? "= " + formatNumber(status.k) : "";
+        }
     };
-
     function formatStackValue(value) {
         const rounded = Math.round(Number(value) * 1000) / 1000;
         let text = rounded
@@ -244,12 +270,49 @@ document.addEventListener("DOMContentLoaded", () => {
         buttons.forEach((btn) => btn.classList.toggle("active", active));
     }
 
+    const businessKeys = new Set(['COST', 'SELL', 'MARGIN', 'MARKUP', 'TAX+', 'TAX-']);
+    const nonOperandKeys = new Set(['RATE', 'GT', '#', 'CE', 'C', 'CLEAR_ALL', 'T', 'T1']);
+    const operatorDisplayMap = new Map([
+        ['+', '+'],
+        ['-', '-'],
+        ['x', 'x'],
+        ['÷', '÷'],
+        ['%', '%'],
+        ['Δ', 'Δ'],
+        ['^', '^'],
+        ['=', '='],
+        ['S1', 'S'],
+        ['T1', 'T']
+    ]);
+
+    const updateTapeCount = () => {
+        if (!iconTapeCount || !paperTape) return;
+            const count = paperTape.querySelectorAll('.tape-row.tape-operand').length;
+        iconTapeCount.textContent = String(count);
+    };
+
+    const updateOperatorIndicator = (value) => {
+        if (!iconOperator) return;
+        iconOperator.textContent = value || '';
+    };
+
+    const setBusinessIndicator = (isOn) => {
+        if (!iconBusiness) return;
+        iconBusiness.className = isOn ? 'vfd-icon on' : 'vfd-icon off';
+    };
+
     // Appends a single entry to the existing DOM tape
     function renderSingleEntry(entry) {
         if (!paperTape) return;
         
         const row = document.createElement("div");
         row.className = "tape-row";
+        const entryValue = entry?.val;
+        const entryNumber = Number(String(entryValue).replace(',', '.'));
+        const isZeroValue = !Number.isNaN(entryNumber) && entryNumber === 0;
+        if (entry?.type === 'input' && !nonOperandKeys.has(entry.key) && !isZeroValue) {
+            row.classList.add("tape-operand");
+        }
         
         // Alignment
         /* 
@@ -327,11 +390,21 @@ document.addEventListener("DOMContentLoaded", () => {
         paperTape.appendChild(row);
         
         paperTape.scrollTop = paperTape.scrollHeight;
+        updateTapeCount();
+        if (entry?.type === 'result') {
+            updateOperatorIndicator('=');
+            setBusinessIndicator(businessKeys.has(entry.key));
+        } else if (entry?.symbol) {
+            updateOperatorIndicator(entry.symbol);
+        }
     }
     
     // Clear Tape UI
     function clearTapeUI() {
         if (paperTape) paperTape.innerHTML = "";
+        updateTapeCount();
+        updateOperatorIndicator('');
+        setBusinessIndicator(false);
     }
 
     function isTapeAtZeroClear() {
@@ -486,6 +559,19 @@ document.addEventListener("DOMContentLoaded", () => {
         // (Adjustments for labels vs Engine expectations)
         const engineKey = applyUiSpecialCases(key);
 
+        const opDisplay = operatorDisplayMap.get(engineKey) || operatorDisplayMap.get(key);
+        if (opDisplay) updateOperatorIndicator(opDisplay);
+        if (!businessKeys.has(engineKey) && !businessKeys.has(key)) {
+            setBusinessIndicator(false);
+        }
+
+        if (pendingKInput && (engineKey === '=' || engineKey === 'Enter' || engineKey === 'CLEAR_ALL' || engineKey === 'CE')) {
+            pendingKInput = false;
+            if (pendingKTimeout) clearTimeout(pendingKTimeout);
+            pendingKTimeout = null;
+            if (iconK) iconK.classList.remove("blink");
+        }
+
         if (engineKey === "CLEAR_ALL") {
             const forcePaperReset = isTapeAtZeroClear();
             triggerClearFeedback(forcePaperReset);
@@ -508,6 +594,21 @@ document.addEventListener("DOMContentLoaded", () => {
                 updateDisplay(String(engine.taxRate));
             }
             engine.pressKey('RATE');
+            return;
+        }
+
+        if (key === 'K') {
+            pendingKInput = true;
+            if (pendingKTimeout) clearTimeout(pendingKTimeout);
+            pendingKTimeout = setTimeout(() => {
+                if (!pendingKInput) return;
+                pendingKInput = false;
+                pendingKTimeout = null;
+                if (iconK) iconK.classList.remove("blink");
+                engine.pressKey('=');
+            }, 5000);
+            if (iconK) iconK.classList.add("blink");
+            engine.pressKey('K');
             return;
         }
 
@@ -555,6 +656,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (key.toLowerCase() === 'd') return 'Δ';
         if (key.toLowerCase() === 'r') return '√';
         if (key.toLowerCase() === 'p') return '^';
+        if (key.toLowerCase() === 'k') return 'K';
         return null;
     }
     
@@ -575,6 +677,12 @@ document.addEventListener("DOMContentLoaded", () => {
             if (isFormField || target.isContentEditable || inSheet) {
                 return;
             }
+        }
+        if (isCalculatorFocused() && paperTape && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+            event.preventDefault();
+            const delta = event.key === 'ArrowUp' ? -40 : 40;
+            paperTape.scrollTop += delta;
+            return;
         }
         if (isTextMode) {
             event.preventDefault();

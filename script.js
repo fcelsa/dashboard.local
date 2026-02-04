@@ -62,6 +62,7 @@ const visibleMonths = 6;
 let isScrolling = false;
 let calendarMenuDate = null;
 
+// --- CALENDAR CONTEXT MENU ---
 calendarContextMenu.className = "calendar-context-menu";
 calendarContextMenu.innerHTML = `
   <div class="calendar-context-header" data-calendar-header></div>
@@ -69,6 +70,7 @@ calendarContextMenu.innerHTML = `
   <button type="button" data-calendar-action="check">Controlla</button>
   <button type="button" data-calendar-action="add">Aggiungi</button>
   <button type="button" data-calendar-action="delete">Cancella</button>
+  <button type="button" data-calendar-action="settings">Impostazioni</button>
 `;
 document.body.appendChild(calendarContextMenu);
 
@@ -149,7 +151,7 @@ function buildMonthCard(date) {
 
   let current = new Date(start);
   let weekCount = 0;
-  
+
   while (current <= end) {
     weekCount++;
     const weekCell = document.createElement("div");
@@ -208,7 +210,7 @@ function buildMonthCard(date) {
 
     current = addDays(current, 7);
   }
-  
+
   card.classList.add(`weeks-${weekCount}`);
 
   card.append(title, weekdays, daysGrid);
@@ -225,10 +227,10 @@ function renderMonths() {
     // Logic fix: We explicitly calculate the target year/month and pick the 1st day.
     // This avoids "Feb skip" bug when today is 29th, 30th, 31st.
     const targetMonthIndex = currentMonth + startOffset + i;
-    
+
     // new Date(y, m, 1) handles month overflow/underflow correctly
     const date = new Date(currentYear, targetMonthIndex, 1);
-    
+
     monthsContainer.appendChild(buildMonthCard(date));
   }
 }
@@ -701,7 +703,7 @@ async function fetchFxLatest() {
   if (!fxPriceEl || !fxChangeEl || !fxUpdatedEl) return;
   try {
     if (fxStatusEl) fxStatusEl.classList.remove("cached");
-    
+
     // Check local session cache (1 hour duration)
     const cached = getCachedSessionRate();
     if (cached && isCacheFresh(cached)) {

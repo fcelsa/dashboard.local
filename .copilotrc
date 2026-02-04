@@ -1,0 +1,13 @@
+# .copilotrc - Project AI Guidelines
+
+[comments]
+# Code comments must be brief and in English.
+# Existing comments (possibly edited by the user) must NOT be changed.
+# If you add lines to existing comments, tag them with @YYYY-MM-DD (e.g., @2026-02-04).
+# For complex functions, prefer multi-line comments using JSDoc syntax.
+
+[commits]
+# Commit descriptions must be short sentences in English.
+
+[code-style]
+# Where relevant and useful, prefer Lambda (arrow) functions over traditional functions.

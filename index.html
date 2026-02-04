@@ -102,17 +102,23 @@
             <div class="vfd-display">
               <!-- Indicators Left -->
               <div class="vfd-status-icons left">
-                <span class="vfd-icon off" id="icon-gt">GT</span>
-                <span class="vfd-icon off" id="icon-minus">-</span>
+                <div class="vfd-icon-row">
+                  <span class="vfd-icon off" id="icon-gt">GT</span>
+                  <span class="vfd-icon-value" id="icon-gt-value"></span>
+                </div>
+                <div class="vfd-icon-row">
+                  <span class="vfd-icon off" id="icon-k">K</span>
+                  <span class="vfd-icon-value" id="icon-k-value"></span>
+                </div>
                 <span class="vfd-icon off" id="icon-mem">M</span>
               </div>
               <span class="vfd-text" id="vfd-display">0</span>
               <div class="vfd-stack" id="vfd-stack" aria-hidden="true"></div>
               <!-- Indicators Right -->
               <div class="vfd-status-icons right">
-                 <span class="vfd-icon off" id="icon-acc1">I</span>
-                 <span class="vfd-icon off" id="icon-acc2">II</span>
-                 <span class="vfd-icon off" id="icon-error">E</span>
+                  <span class="vfd-indicator-soft" id="icon-tape-count">0</span>
+                  <span class="vfd-indicator-soft" id="icon-operator"></span>
+                  <span class="vfd-icon off" id="icon-business">B</span>
               </div>
             </div>
 
@@ -178,6 +184,7 @@
                   <button class="key-btn key-rect key-gray" data-key="TAX+">TAX+</button>
                   <button class="key-btn key-rect key-gray" data-key="TAX-">TAX-</button>
                   <button class="key-btn key-rect key-gray" data-key="RATE">RATE</button>
+                  <button class="key-btn key-rect key-gray" data-key="K">K</button>
               </div>
 
               <div class="calc-main-keys">

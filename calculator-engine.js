@@ -143,6 +143,10 @@ class CalculatorEngine {
         this.sellValue = null;
         this.pricingMode = 'margin'; // 'margin' | 'markup'
         this.awaitingRate = false;
+        this.constantK = null;
+        this.awaitingK = false;
+        this.kInitialValue = null;
+        this.kInitialFromDisplay = false;
 
         // Settings (default)
         this.settings = {
@@ -245,7 +249,8 @@ class CalculatorEngine {
                 acc2: false,
                 gt: this.grandTotal !== 0,
                 error: this.errorState,
-                minus: parseFloat(this.currentInput) < 0 || (this.currentInput === '0' && this.accumulator < 0 && !this.isNewSequence) // Logic for minus sign? Usually just current displayed number
+                minus: parseFloat(this.currentInput) < 0 || (this.currentInput === '0' && this.accumulator < 0 && !this.isNewSequence), // Logic for minus sign? Usually just current displayed number
+                k: this.constantK
             });
         }
     }
@@ -333,21 +338,6 @@ class CalculatorEngine {
         }
     }
     
-    // Better Strategy: Recalculate is only needed for Chain Undo.
-    // We already have clean state separation.
-    
-    // Let's implement simpler Replay:
-    // We only need to replay logic for keys that change state.
-    // Helper to dispatch
-    _dispatchInternal(key, val) {
-         if (['+', '-'].includes(key)) this._handleAddSub(key, val);
-         else if (['x', '÷'].includes(key)) this._handleMultDiv(key, val);
-         else if (key === '=') this._handleEqual(val);
-         // Totals are operations that use state, they don't input value usually.
-         // But logic needs them to clear acc.
-         // We'll fix _handleTotal to be replayable.
-    }
-
     // --- INPUT DISPATCH ---
     // Main entry point for inputs
     pressKey(key) {
@@ -367,6 +357,30 @@ class CalculatorEngine {
                      if (this.onRateUpdate) this.onRateUpdate(this.taxRate);
                  }
                  this.awaitingRate = false;
+                 this._clearAll();
+                 return;
+             }
+             if (!isNumeric) {
+                 return;
+             }
+        }
+
+        // K Confirmation Logic
+        if (this.awaitingK) {
+             const isNumeric = (!isNaN(parseFloat(key)) || key === '00' || key === '000' || key === '.');
+             if (key === '=' || key === 'Enter') {
+                 const kVal = parseFloat(this.currentInput);
+                 if (!isNaN(kVal) && this.currentInput !== this.kInitialValue) {
+                     this.constantK = kVal;
+                 } else if (this.kInitialFromDisplay && !isNaN(kVal)) {
+                     this.constantK = kVal;
+                 } else {
+                     this.constantK = 0;
+                 }
+                 this.awaitingK = false;
+                 this.kInitialValue = null;
+                 this.kInitialFromDisplay = false;
+                 this._emitStatus();
                  this._clearAll();
                  return;
              }
@@ -425,6 +439,7 @@ class CalculatorEngine {
 
             // Business Keys
             case 'RATE':
+            case 'K':
             case 'TAX+':
             case 'TAX-':
             case 'COST':
@@ -709,7 +724,18 @@ class CalculatorEngine {
         if (this.pendingPowerBase !== null) {
             this.pendingPowerBase = null;
         }
-        let val = explicitVal !== null ? explicitVal : parseFloat(this.currentInput);
+        if (this.pendingMultDivOp && this.isNewSequence && this.currentInput === "0" && this.constantK !== null && this.constantK !== 0) {
+            this._handleEqual(this.constantK);
+            return;
+        }
+        let val;
+        if (explicitVal !== null) {
+            val = explicitVal;
+        } else if (this.pendingMultDivOp && this.constantK !== null && this.isNewSequence && this.currentInput === "0") {
+            val = this.constantK;
+        } else {
+            val = parseFloat(this.currentInput);
+        }
         this.awaitingMultDivTotal = false;
 
         if (this.totalPendingState[1]) {
@@ -1299,7 +1325,7 @@ class CalculatorEngine {
         const subtotalRounded = this._applyRoundingWithFlag(val);
         val = subtotalRounded.value;
         
-        const sym = '◇';
+        const sym = 'S';
         
         this._addHistoryEntry({
             val: this._formatResult(val),
@@ -1353,6 +1379,9 @@ class CalculatorEngine {
         this.pendingDelta = null;
         this.pendingPowerBase = null;
         this.awaitingRate = false;
+        this.awaitingK = false;
+        this.kInitialValue = null;
+        this.kInitialFromDisplay = false;
         this.costValue = null;
         this.sellValue = null;
         this.markupPercent = 0;
@@ -1385,6 +1414,22 @@ class CalculatorEngine {
             this.awaitingRate = true;
             this.currentInput = String(this.taxRate);
             this.isNewSequence = true;
+            this.onDisplayUpdate(this.currentInput);
+            return;
+        }
+
+        if (key === 'K') {
+            const displayVal = parseFloat(this.currentInput);
+            if (!isNaN(displayVal) && this.currentInput !== "0") {
+                this.kInitialValue = String(displayVal);
+                this.kInitialFromDisplay = true;
+            } else {
+                this.kInitialValue = this.constantK !== null ? String(this.constantK) : "0";
+                this.kInitialFromDisplay = false;
+            }
+            this.currentInput = this.kInitialValue;
+            this.isNewSequence = true;
+            this.awaitingK = true;
             this.onDisplayUpdate(this.currentInput);
             return;
         }
