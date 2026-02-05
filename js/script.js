@@ -156,13 +156,13 @@ function buildMonthCard(date) {
     weekCount++;
     const weekCell = document.createElement("div");
     weekCell.className = "week-number";
-    // Determina se questa è la settimana corrente
+    // Check if this is the current week
     const currentWeekNumber = getISOWeekNumber(current);
     const todayWeekNumber = getISOWeekNumber(today);
     const isCurrentWeek =
       currentWeekNumber === todayWeekNumber &&
       current.getFullYear() === today.getFullYear();
-    // Crea il dot se è la settimana corrente
+    // Create dot indicator for current week
     if (isCurrentWeek) {
       const dot = document.createElement("span");
       dot.textContent = "• ";

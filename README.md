@@ -17,12 +17,14 @@ The calculator is a highly customized imitation of the Olivetti business desktop
 ### Project structure
 
 - `index.html` - Main page
-- `styles.css` - General style
-- `calculator.css` - Style for calculator
-- `calc-sheet.css` - Style for calc sheet
-- `script.js` - Main script
-- `calculator.js` - Calculator logic and interactions
-- `calculator-engine.js` - Calculator engine
-- `calc-sheet.js` - Function for calc sheet
-- `moon.js` - Moon phase functions
+- `css/` - Stylesheets folder
+  - `styles.css` - General style
+  - `calculator.css` - Style for calculator
+  - `calc-sheet.css` - Style for calc sheet
+- `js/` - JavaScript modules folder
+  - `script.js` - Main script (calendar, FX data, settings)
+  - `calculator.js` - Calculator logic and interactions
+  - `calculator-engine.js` - Calculator engine
+  - `calc-sheet.js` - Function for calc sheet
+  - `moon.js` - Moon phase functions
 
