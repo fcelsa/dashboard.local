@@ -1,7 +1,7 @@
-// Costanti astronomiche
+// Astronomical constants
 const SYNODIC_MONTH = 29.530588853;
 
-// Mappatura fasi per Emoji e Label
+// Moon phase emoji mapping
 const MOON_PHASES = [
   { label: "Luna nuova", emoji: "🌑" },
   { label: "Falce crescente", emoji: "🌒" },
@@ -33,7 +33,7 @@ function fromJulianDay(jd) {
 }
 
 /**
- * Normalizza un angolo in gradi nell'intervallo 0-360.
+ * Normalize angle to 0-360 degrees
  */
 function normalizeDegrees(deg) {
   deg = deg % 360;
@@ -42,7 +42,7 @@ function normalizeDegrees(deg) {
 }
 
 /**
- * Converte gradi in radianti.
+ * Convert degrees to radians
  */
 function toRad(deg) {
   return deg * (Math.PI / 180);
@@ -128,10 +128,10 @@ function computeExactPhase(k) {
     corrections += -0.00021 * Math.sin(2 * rM - rMp); 
   }
 
-  // Correzioni aggiuntive per l'orbita terrestre (eccentricità)
-  // Queste sono incluse sopra indirettamente nei termini rM, ma Jean Meeus aggiunge termini planetari extra 
-  // che per l'uso "dashboard" possiamo omettere (sono dell'ordine di 0.0003 giorni ~ 25 secondi).
-  // Manteniamo questa precisione (circa +/- 1-2 minuti).
+  // Additional corrections for Earth's orbit (eccentricity)
+  // These are included indirectly in the rM terms above, but Jean Meeus adds extra
+  // planetary terms we can omit for dashboard use (~0.0003 days or 25 seconds precision).
+  // This maintains accuracy within ~1-2 minutes.
 
   return jd + corrections;
 }
@@ -150,17 +150,17 @@ function calculateCurrentMoonStatus() {
   const kNextNew = kPrevNew + 1;
   
   // Calcoliamo i JD esatti per la luna nuova precedente e successiva
-  // Nota: kPrevNew è un intero.
+  // Note: kPrevNew is an integer
   let jdPrevNew = computeExactPhase(kPrevNew);
   let jdNextNew = computeExactPhase(kNextNew);
   
-  // Raffiniamo: se currentJD < jdPrevNew, in realtà siamo ancora nel ciclo precedente 
-  // (perché la stima media kFloat era un po' avanti rispetto alla realtà perturbata)
+  // Refinement: if currentJD < jdPrevNew, we're still in the previous cycle
+  // (because the mean estimate kFloat was ahead compared to perturbed reality)
   if (currentJD < jdPrevNew) {
       jdPrevNew = computeExactPhase(kPrevNew - 1);
       jdNextNew = computeExactPhase(kPrevNew);
   } else if (currentJD > jdNextNew) {
-       // Caso opposto, siamo già nel successivo
+       // Opposite case: already in next cycle
        jdPrevNew = computeExactPhase(kNextNew);
        jdNextNew = computeExactPhase(kNextNew + 1);
   }
@@ -169,13 +169,13 @@ function calculateCurrentMoonStatus() {
   const ageDays = currentJD - jdPrevNew;
   const phaseFraction = ageDays / currentLunationLength;
 
-  // Calcolo prossimo evento rilevante (Full o New)
-  // Dobbiamo capire se la prossima Full Moon è in questo ciclo (tra prevNew e nextNew) 
-  // o se l'abbiamo già passata.
+  // Calculate next relevant event (Full or New)
+  // Determine if next Full Moon is in this cycle (between prevNew and nextNew)
+  // or if we've already passed it.
   
-  // Stima k per la Full Moon di questo ciclo
-  // Se jdPrevNew corrisponde a k=N, allora la Full Moon è k=N+0.5
-  // Dobbiamo ritrovare il 'k' originale associato a jdPrevNew.
+  // Estimate k for Full Moon in this cycle
+  // If jdPrevNew corresponds to k=N, then Full Moon is k=N+0.5
+  // Need to find the original 'k' associated with jdPrevNew.
   const approximatedK = Math.round((jdPrevNew - 2451550.1) / 29.53);
   
   const jdFullThisCycle = computeExactPhase(approximatedK + 0.5);
@@ -183,15 +183,15 @@ function calculateCurrentMoonStatus() {
   let nextFullMoonDate, nextNewMoonDate;
   
   if (currentJD < jdFullThisCycle) {
-      // La prossima piena è in questo ciclo
+      // Next full moon is in this cycle
       nextFullMoonDate = fromJulianDay(jdFullThisCycle);
   } else {
-      // La prossima piena è nel prossimo ciclo
+      // Next full moon is in the following cycle
       const jdFullNextCycle = computeExactPhase(approximatedK + 1.5);
       nextFullMoonDate = fromJulianDay(jdFullNextCycle);
   }
   
-  // La prossima nuova è sempre jdNextNew (che è la fine di questo ciclo)
+  // Next new moon is always jdNextNew (end of current cycle)
   nextNewMoonDate = fromJulianDay(jdNextNew);
 
   return {
@@ -238,9 +238,9 @@ function renderMoonPhase() {
   icon.textContent = phase.emoji;
   title.textContent = `${phase.label} · ${illumination}%`;
 
-  // Logica avanzata per mostrare l'evento più "interessante" o vicino
-  // Se la fase è < 50% (crescente), l'evento clou è la Luna Piena.
-  // Se la fase è > 50% (calante), l'evento clou è la Luna Nuova.
+  // Display logic: show the most interesting or nearest event
+  // If phase < 50% (waxing), highlight full moon
+  // If phase > 50% (waning), highlight new moon
   
     if (status.phaseFraction < 0.5) {
       subtitle.textContent = `Prossima luna piena:\n${formatShortDateTime(status.nextFullMoon)}`;
