@@ -215,7 +215,7 @@ document.addEventListener("DOMContentLoaded", () => {
             isFloat: s.isFloat,
             addMode: s.addMode,
             accumulateGT: s.accumulateGT,
-            memoryMode: s.accumulateGT ? 'stack' : 'algebraic'
+            memoryMode: s.accumulateGT ? 'stack' : 'algebric'
         });
     }
 
@@ -327,9 +327,23 @@ document.addEventListener("DOMContentLoaded", () => {
              If key is x, ÷, = OR symbol is =, align LEFT.
              CONST entry has key='CONST'.
         */
-        if (entry.symbol === '◇' || entry.symbol === 'S' || entry.symbol === 'T') {
+        // Special case: when printing the second operand as an input with symbol '='
+        // for an add/sub chain, we want it right-aligned so the symbol stays to the
+        // right of the number (matches user expectation). Detect this by looking
+        // at the last rendered row's symbol (if any).
+        let forcedAlignRightForEquals = false;
+        if (entry.key === '=' && entry.type === 'input') {
+            const lastRow = paperTape?.querySelector?.('.tape-row:last-child');
+            const lastSym = lastRow?.querySelector('.tape-symbol')?.textContent?.trim();
+            if (lastSym === '+' || lastSym === '-') {
+                forcedAlignRightForEquals = true;
+            }
+        }
+
+        if (entry.symbol === '◇' || entry.symbol === 'S' || entry.symbol === 'T' || forcedAlignRightForEquals) {
             row.classList.add("align-right");
-        } else if (['x', '÷', '=', 'CONST'].includes(entry.key) || entry.symbol === '=') {
+        } else if (['x', '÷', 'CONST'].includes(entry.key) || entry.symbol === '=') {
+            // Keep multiplication/division and explicit '=' result markers left aligned
             row.classList.add("align-left");
         } else {
             row.classList.add("align-right");
@@ -377,6 +391,7 @@ document.addEventListener("DOMContentLoaded", () => {
             symSpan.classList.add("tape-symbol-small");
         }
 
+        // Append value then symbol (symbols stay to the right of the number)
         row.appendChild(valSpan);
         row.appendChild(symSpan);
 

@@ -1070,6 +1070,9 @@ class CalculatorEngine {
                 res = this.addSubOperand - val;
             }
 
+            // Print the second operand (user pressed '=') so it appears on the tape
+            this._addHistoryEntry({ val, symbol: '=', key: '=', type: 'input' });
+
             // Save constant state for repeat '=' behavior
             this.lastOperation = { op: this.pendingAddSubOp, operand: val };
             const resRounded = this._applyRoundingWithFlag(res);

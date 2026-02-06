@@ -659,6 +659,19 @@ button[data-key="CNT"]::after {
     text-align: right;
 }
 
+/* Ensure for right-aligned rows the numeric value expands and stays flush right
+   while the symbol remains to the immediate right without forcing extra space. */
+.tape-row.align-right .tape-val {
+    flex: 1 1 auto;
+    text-align: right;
+    min-width: 0; /* allow shrinking in narrow containers */
+}
+.tape-row .tape-symbol {
+    flex: 0 0 auto;
+    margin-left: 8px;
+    white-space: nowrap;
+}
+
 .tape-percent {
     margin-left: 6px;
     color: #9a9a9a;
