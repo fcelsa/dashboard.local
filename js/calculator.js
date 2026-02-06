@@ -740,7 +740,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 return;
             }
 
-            // Qualsiasi altra combinazione annulla senza effetti
+            // any other key cancels the chord
             pendingMemoryChord = false;
             if (pendingMemoryTimeout) clearTimeout(pendingMemoryTimeout);
             pendingMemoryTimeout = null;

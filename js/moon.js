@@ -137,19 +137,19 @@ function computeExactPhase(k) {
 }
 
 /**
- * Calcola l'età della luna e la fase corrente.
+ * Moon age calculation and current phase.
  */
 function calculateCurrentMoonStatus() {
   const now = new Date();
   const currentJD = toJulianDay(now);
 
-  // Stima approssimativa di k (da J2000 New Moon)
+  // approx k (from J2000 New Moon)
   // JD New Moon 2000 = 2451550.1
   const kFloat = (currentJD - 2451550.1) / SYNODIC_MONTH;
   const kPrevNew = Math.floor(kFloat);
   const kNextNew = kPrevNew + 1;
   
-  // Calcoliamo i JD esatti per la luna nuova precedente e successiva
+  // precise JD calculation for previous and next new moon
   // Note: kPrevNew is an integer
   let jdPrevNew = computeExactPhase(kPrevNew);
   let jdNextNew = computeExactPhase(kNextNew);
