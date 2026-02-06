@@ -113,9 +113,19 @@ class CalculatorEngine {
         this.errorState = false;
         this.totalPendingState = { 1: false };
         this.lastOperation = null; // Stores { op: 'x', operand: 10 } for constant calc
-
         this.lastAddSubValue = null;
         this.lastAddSubOp = null;
+        this.pendingAddSubOp = null;
+        this.addSubOperand = null;
+        this.awaitingAddSubTotal = false;
+        this.addSubResults = [];
+        this.addSubTotalPendingClear = false;
+        // Add/Sub chaining state (make + and - behave like x/÷)
+        this.pendingAddSubOp = null;
+        this.addSubOperand = null;
+        this.awaitingAddSubTotal = false;
+        this.addSubResults = [];
+        this.addSubTotalPendingClear = false;
         this.lastMultDivResult = null;
         this.awaitingMultDivTotal = false;
         this.multDivTotalPendingClear = false;
@@ -592,14 +602,39 @@ class CalculatorEngine {
             return;
         }
 
-        // Uscendo dalla catena mult/div, azzera il suo stato
+        // If we're already waiting for the next operand (user pressed an operator
+        // and didn't type the second operand yet), subsequent operator presses
+        // should not emit a new tape entry. If the operator changes (from + to -
+        // or viceversa), update the pending operator and refresh the tape UI.
+        if (this.pendingAddSubOp && this.isNewSequence) {
+            if (op === this.pendingAddSubOp) {
+                return; // no effect
+            }
+            // change pending operator symbol in history if present
+            for (let i = this.entries.length - 1; i >= 0; i--) {
+                const e = this.entries[i];
+                if (e && e.type === 'input' && (e.key === '+' || e.key === '-')) {
+                    e.symbol = op;
+                    e.key = op;
+                    break;
+                }
+            }
+            this.pendingAddSubOp = op;
+            if (this.onTapeRefresh) this.onTapeRefresh(this.entries);
+            this._emitStatus();
+            return;
+        }
+
+        // Exiting mult/div chain: clear its state
         this.awaitingMultDivTotal = false;
         this.lastMultDivResult = null;
         this.multDivResults = [];
         this.pendingMultDivOp = null;
         this.multDivTotalPendingClear = false;
 
-        // Logic: Print current input with OP, update accumulator
+        // Also exit any previous add/sub chain if needed
+        // (we will manage chaining for add/sub similarly to mult/div)
+
         let val;
         if (explicitVal !== null) {
             val = explicitVal;
@@ -610,30 +645,33 @@ class CalculatorEngine {
         }
         if (isNaN(val)) val = 0;
 
-        // Add entry to history
+        // If there's already a pending add/sub operation, and the user typed a new operand,
+        // compute the intermediate result first (chain behaviour), mirroring mult/div logic.
+        if (!this.pendingAddSubOp) {
+            // First term in add/sub chain
+            this.addSubResults = [];
+            this.addSubOperand = val;
+        } else {
+            if (!this.isNewSequence) {
+                let interRes = 0;
+                if (this.pendingAddSubOp === '+') {
+                    interRes = this.addSubOperand + val;
+                } else if (this.pendingAddSubOp === '-') {
+                    interRes = this.addSubOperand - val;
+                }
+
+                interRes = this._applyRounding(interRes);
+                this.addSubResults.push(interRes);
+                this.addSubOperand = interRes;
+                if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(interRes));
+            } else {
+                // If isNewSequence, keep operand as-is (user pressed op twice)
+            }
+        }
+
+        this.pendingAddSubOp = op;
         this._addHistoryEntry({ val, symbol: op, key: op, type: 'input' });
 
-        if (op === '+') {
-            this.accumulator += val;
-        } else if (op === '-') {
-            this.accumulator -= val;
-        }
-        
-        // Fix precision on accumulator
-        this.accumulator = parseFloat(Number(this.accumulator).toPrecision(15));
-
-        // Display current accumulator (subtotal) or just input?
-        // Standard tape calc: shows result of addition on display? 
-        // Usually yes, running total.
-        if (!this.isReplaying) {
-            this.onDisplayUpdate(this._formatResult(this.accumulator));
-        }
-
-        this.lastAddSubValue = val;
-        this.lastAddSubOp = op;
-        this.awaitingMultDivTotal = false;
-        
-        // Reset input for next number
         this.currentInput = "0";
         this.isNewSequence = true;
     }
@@ -657,6 +695,7 @@ class CalculatorEngine {
         const hasExplicitInput = !this.isNewSequence || this.currentInput !== "0";
         if (!isNaN(parsed) && hasExplicitInput) return parsed;
         if (this.pendingMultDivOp && this.multDivOperand !== null && this.isNewSequence) return this.multDivOperand;
+        if (this.pendingAddSubOp && this.addSubOperand !== null && this.isNewSequence) return this.addSubOperand;
         if (this.accumulator !== 0 && this.isNewSequence) return this.accumulator;
         if (!isNaN(parsed)) return parsed;
         return null;
@@ -724,6 +763,12 @@ class CalculatorEngine {
         if (this.pendingPowerBase !== null) {
             this.pendingPowerBase = null;
         }
+        // Exiting any add/sub chain when starting mult/div
+        this.pendingAddSubOp = null;
+        this.addSubOperand = null;
+        this.awaitingAddSubTotal = false;
+        this.addSubResults = [];
+        this.addSubTotalPendingClear = false;
         if (this.pendingMultDivOp && this.isNewSequence && this.currentInput === "0" && this.constantK !== null && this.constantK !== 0) {
             this._handleEqual(this.constantK);
             return;
@@ -1014,6 +1059,53 @@ class CalculatorEngine {
         }
 
         // --- SCENARIO A: Normal Calculation (A op B =) ---
+        if (this.pendingAddSubOp) {
+            // Handle pending add/sub chain
+            let val = explicitVal !== null ? explicitVal : parseFloat(this.currentInput);
+
+            let res = 0;
+            if (this.pendingAddSubOp === '+') {
+                res = this.addSubOperand + val;
+            } else if (this.pendingAddSubOp === '-') {
+                res = this.addSubOperand - val;
+            }
+
+            // Save constant state for repeat '=' behavior
+            this.lastOperation = { op: this.pendingAddSubOp, operand: val };
+            const resRounded = this._applyRoundingWithFlag(res);
+            res = resRounded.value;
+
+            // For add/sub we print only the Total line (T) aligned right, not an intermediate result
+            // Accumulate into GT and accumulator
+            this._accumulateGT(res);
+            this.accumulator += res;
+            this.accumulator = parseFloat(Number(this.accumulator).toPrecision(15));
+
+            const accumRounded = this._applyRoundingWithFlag(this.accumulator);
+            // Print Total with symbol 'T'
+            this._addHistoryEntry({
+                val: this._formatResult(accumRounded.value),
+                symbol: 'T',
+                key: 'T',
+                type: 'result',
+                roundingFlag: accumRounded.roundingFlag
+            });
+            if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(accumRounded.value));
+
+            this.lastAddSubValue = val;
+            this.lastAddSubOp = this.pendingAddSubOp;
+            this.lastMultDivResult = null;
+            this.awaitingAddSubTotal = true;
+            this.addSubResults.push(res);
+            this.addSubTotalPendingClear = false;
+
+            this.currentInput = String(res);
+            this.isNewSequence = true;
+            this.pendingAddSubOp = null;
+            this._emitStatus();
+            return;
+        }
+
         if (this.pendingMultDivOp) {
             let val = explicitVal !== null ? explicitVal : parseFloat(this.currentInput);
             
@@ -1371,6 +1463,11 @@ class CalculatorEngine {
         this.errorState = false;
         this.lastAddSubValue = null;
         this.lastAddSubOp = null;
+        this.pendingAddSubOp = null;
+        this.addSubOperand = null;
+        this.awaitingAddSubTotal = false;
+        this.addSubResults = [];
+        this.addSubTotalPendingClear = false;
         this.lastMultDivResult = null;
         this.awaitingMultDivTotal = false;
         this.multDivResults = [];
@@ -1446,6 +1543,13 @@ class CalculatorEngine {
             this._triggerError("Error");
             return;
         }
+
+            // Business keys operate on a positive input when used as unary on the
+            // waiting-first-operand state. Accept the absolute value to match
+            // expected behaviour (user indicated "purché positivo").
+            if (val < 0 && ['COST','SELL','MARGIN','MARKUP','TAX+','TAX-'].includes(key)) {
+                val = Math.abs(val);
+            }
 
         try {
             let res;
