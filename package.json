@@ -1,0 +1,10 @@
+{
+  "name": "dashboard-local",
+  "version": "1.0.0",
+  "description": "Personal dashboard — calendar, FX, calculator, calc-sheet",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "npx serve ."
+  }
+}

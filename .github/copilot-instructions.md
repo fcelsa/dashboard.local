@@ -5,6 +5,7 @@ Follow these rules strictly.
 
 ## General
 - Use English for code and comments
+- Dev server runs at http://localhost:5000/ — use it for manual testing
 
 
 ## Naming

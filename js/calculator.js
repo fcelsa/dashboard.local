@@ -1,3 +1,6 @@
+import { CalculatorEngine } from './calculator-engine.js';
+import { getCookie, setCookie } from './utils/cookies.js';
+
 document.addEventListener("DOMContentLoaded", () => {
   try {
         // --- DOM ---
@@ -22,11 +25,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const switchDEC = document.getElementById("switch-dec");
     const switchACC = document.getElementById("switch-acc");
     const switchPRT = document.getElementById("switch-prt");
-
-    // DEBUG CHECK
-    if (!window.CalculatorEngine) {
-        throw new Error("CalculatorEngine class not loaded"); 
-    }
 
     // --- SETTINGS ---
     // Loading (Persistence)
@@ -117,14 +115,7 @@ document.addEventListener("DOMContentLoaded", () => {
     );
 
     // --- ENGINE ---
-    // Ensure CalculatorEngine is loaded
-    const EngineClass = window.CalculatorEngine;
-    if (!EngineClass) {
-        console.error("CalculatorEngine not found!");
-        updateDisplay("ERR: ENGINE");
-    }
-
-    const engine = new EngineClass();
+    const engine = new CalculatorEngine();
 
     // Bind Engine Callbacks
     engine.onDisplayUpdate = (val) => {
@@ -226,19 +217,6 @@ document.addEventListener("DOMContentLoaded", () => {
     // Init engine settings
     updateEngineSettings();
 
-    function getCookie(name) {
-        const value = document.cookie
-            .split(";")
-            .map((item) => item.trim())
-            .find((item) => item.startsWith(`${name}=`));
-        if (!value) return null;
-        return decodeURIComponent(value.split("=")[1]);
-    }
-
-    function setCookie(name, value, maxAgeSeconds = 31536000) {
-        document.cookie = `${name}=${encodeURIComponent(value)}; max-age=${maxAgeSeconds}; path=/`;
-    }
-
     const rateCookieKey = "logos_TAX_RATE";
     const storedRate = parseFloat(getCookie(rateCookieKey));
     if (!isNaN(storedRate)) {
@@ -248,7 +226,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     engine.onRateUpdate = (rate) => {
-        setCookie(rateCookieKey, rate);
+        const ONE_YEAR = 60 * 60 * 24 * 365;
+        setCookie(rateCookieKey, rate, ONE_YEAR);
         pendingRateInput = false;
         if (pendingRateTimeout) clearTimeout(pendingRateTimeout);
         pendingRateTimeout = null;

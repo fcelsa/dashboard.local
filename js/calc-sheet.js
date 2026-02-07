@@ -1,4 +1,4 @@
-(() => {
+function initCalcSheet() {
   const COLS = 11;
   const ROWS = 32;
   const DB_NAME = "calc-sheet-db";
@@ -779,4 +779,8 @@
     if (!saveIndicator) return;
     saveIndicator.classList.toggle("is-active", hasPendingSave);
   }
-})();
+}
+
+initCalcSheet();
+
+export { initCalcSheet };

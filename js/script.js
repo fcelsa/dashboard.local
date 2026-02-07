@@ -1,3 +1,6 @@
+import { getCookie, setCookie, deleteCookie } from './utils/cookies.js';
+import { renderMoonPhase } from './moon.js';
+
 const monthsContainer = document.getElementById("months");
 const flipClock = document.getElementById("flip-clock");
 const clockWrap = document.getElementById("clock-wrap");
@@ -263,9 +266,7 @@ function scheduleMidnightRefresh() {
 
   setTimeout(() => {
     renderMonths();
-    if (window.updateMoonPhase) {
-      window.updateMoonPhase();
-    }
+    renderMoonPhase();
     scheduleMidnightRefresh();
   }, timeout);
 }
@@ -389,22 +390,6 @@ function formatTime(date) {
 
 // --- FX HELPERS / API KEYS ---
 // --- FX CACHE (SESSION) ---
-function getCookie(name) {
-  const value = document.cookie
-    .split(";")
-    .map((item) => item.trim())
-    .find((item) => item.startsWith(`${name}=`));
-  if (!value) return null;
-  return decodeURIComponent(value.split("=")[1]);
-}
-
-function setCookie(name, value, maxAgeSeconds = 3600) {
-  document.cookie = `${name}=${encodeURIComponent(value)}; max-age=${maxAgeSeconds}; path=/`;
-}
-
-function deleteCookie(name) {
-  document.cookie = `${name}=; max-age=0; path=/`;
-}
 
 function getFreeCurrencyCookieKey() {
   const key = getCookie(freeCurrencyCookieKey);
@@ -1171,4 +1156,4 @@ function initDashboard() {
   updateFxKeyStatus();
 }
 
-initDashboard();
+export { initDashboard };

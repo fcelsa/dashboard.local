@@ -1,100 +1,15 @@
+import {
+    computeSell,
+    computeCost,
+    computeMargin,
+    computeMarkup,
+    computeSellFromMarkup,
+    computeCostFromMarkup,
+    addTax,
+    removeTax
+} from './engine/business-math.js';
 
-// Business math helpers (kept local to the engine)
-// Margin (%) is treated as a percent of sell price (gross margin).
-function computeSell(cost, marginPercent) {
-    const m = Number(marginPercent) / 100;
-    if (isNaN(cost) || isNaN(m)) return NaN;
-    const denom = 1 - m;
-    if (denom === 0) throw new Error('DivisionByZero');
-    return Number(cost) / denom;
-}
-
-function computeCost(sell, marginPercent) {
-    const m = Number(marginPercent) / 100;
-    if (isNaN(sell) || isNaN(m)) return NaN;
-    return Number(sell) * (1 - m);
-}
-
-function computeMargin(cost, sell) {
-    cost = Number(cost);
-    sell = Number(sell);
-    if (isNaN(cost) || isNaN(sell)) return NaN;
-    if (sell === 0) throw new Error('DivisionByZero');
-    return ((sell - cost) / sell) * 100;
-}
-
-// Markup (%) = (profit / cost) * 100
-function computeMarkup(cost, sell) {
-    cost = Number(cost);
-    sell = Number(sell);
-    if (isNaN(cost) || isNaN(sell)) return NaN;
-    if (cost === 0) throw new Error('DivisionByZero');
-    return ((sell - cost) / cost) * 100;
-}
-
-function computeSellFromMarkup(cost, markupPercent) {
-    const m = Number(markupPercent) / 100;
-    if (isNaN(cost) || isNaN(m)) return NaN;
-    return Number(cost) * (1 + m);
-}
-
-function computeCostFromMarkup(sell, markupPercent) {
-    const m = Number(markupPercent) / 100;
-    if (isNaN(sell) || isNaN(m)) return NaN;
-    const denom = 1 + m;
-    if (denom === 0) throw new Error('DivisionByZero');
-    return Number(sell) / denom;
-}
-
-function addTax(amount, ratePercent) {
-    const r = Number(ratePercent) / 100;
-    if (isNaN(amount) || isNaN(r)) return NaN;
-    return Number(amount) * (1 + r);
-}
-
-function removeTax(amountWithTax, ratePercent) {
-    const r = Number(ratePercent) / 100;
-    if (isNaN(amountWithTax) || isNaN(r)) return NaN;
-    const denom = 1 + r;
-    if (denom === 0) throw new Error('DivisionByZero');
-    return Number(amountWithTax) / denom;
-}
-
-// Rounding helpers
-function roundToDecimals(value, decimals) {
-    const factor = Math.pow(10, decimals);
-    return Math.round(Number(value) * factor) / factor;
-}
-
-// applyRounding modes:
-// mode: 'none' | 'nearest5' | 'up' | 'truncate'
-// decimals: number of decimals to apply after rounding step
-function applyRounding(value, mode = 'none', decimals = 2) {
-    value = Number(value);
-    if (isNaN(value)) return NaN;
-    if (mode === 'none') return roundToDecimals(value, decimals);
-
-    if (mode === 'nearest5') {
-        // Round to nearest 0.05, then to requested decimals
-        const step = 0.05;
-        const rounded = Math.round(value / step) * step;
-        return roundToDecimals(rounded, decimals);
-    }
-
-    if (mode === 'up') {
-        // Round up (ceiling) to given decimals
-        const factor = Math.pow(10, decimals);
-        return Math.ceil(value * factor) / factor;
-    }
-
-    if (mode === 'truncate') {
-        // Truncate (cut off) to given decimals
-        const factor = Math.pow(10, decimals);
-        return Math.trunc(value * factor) / factor;
-    }
-
-    return roundToDecimals(value, decimals);
-}
+import { roundToDecimals, applyRounding } from './utils/number-utils.js';
 
 class CalculatorEngine {
     constructor(settings = {}) {
@@ -1729,9 +1644,4 @@ class CalculatorEngine {
     }
 }
 
-// Support for both Node (tests) and Browser
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = CalculatorEngine;
-} else {
-    window.CalculatorEngine = CalculatorEngine;
-}
+export { CalculatorEngine };

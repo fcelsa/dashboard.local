@@ -1,8 +1,9 @@
 # Notes and bug to see later
 
+
 ## General to do
 - Theming system
-- Language and Country support
+- Language and Country support (i18n - i10n)
 
 
 ## Calendar
@@ -30,7 +31,6 @@
 ---
 
 
-
 ## Calculator Tab
 - At this time when Error accour the calculator it's blocked, also after press backspace or CE, only double click on CE or delete cancel error, but also reset all.
 - Status save with IndexedDB
@@ -40,11 +40,4 @@
 
 
 ## Calc-sheet Tab
-
-
-
-
-
-
-
 

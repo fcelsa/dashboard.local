@@ -249,6 +249,4 @@ function renderMoonPhase() {
     }
 }
 
-// Avvia
-renderMoonPhase();
-window.updateMoonPhase = renderMoonPhase;
+export { renderMoonPhase };
