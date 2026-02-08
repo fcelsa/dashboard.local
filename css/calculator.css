@@ -693,6 +693,27 @@ button[data-key="CNT"]::after {
     color: #cc0000;
 }
 
+/* Editable tape entries */
+.tape-editable {
+    cursor: pointer;
+}
+.tape-editable:hover {
+    text-decoration: underline dotted;
+}
+.tape-edit-input {
+    width: 80%;
+    max-width: 10ch;
+    font-family: inherit;
+    font-size: inherit;
+    background: transparent;
+    border: none;
+    border-bottom: 1px dashed currentColor;
+    color: inherit;
+    text-align: right;
+    outline: none;
+    padding: 0;
+}
+
 /* Result Row Separation */
 .tape-row.result-row {
     margin-bottom: 15px; /* Spazio extra dopo il risultato */

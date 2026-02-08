@@ -1,9 +1,13 @@
 @import url("https://fonts.googleapis.com/css2?family=Droid+Sans+Mono&display=swap");
 
-:root {
+/* === DEFAULT (dark) theme variables === */
+:root,
+[data-theme="dark"] {
   color-scheme: dark;
   --bg: #1a1e24;
+  --bg-gradient: radial-gradient(circle at top left, #4c5f82, #273852 80%);
   --panel: #232833;
+  --panel-gradient: linear-gradient(150deg, var(--panel), #1d222c);
   --panel-soft: #2a303c;
   --text: #e6e8ec;
   --muted: #a8b0bf;
@@ -11,6 +15,48 @@
   --accent-2: #9bb3a8;
   --shadow: rgba(0, 0, 0, 0.35);
   --radius: 18px;
+  --flip-bg: linear-gradient(180deg, #2d3646 0%, #1c222c 100%);
+  --flip-text: #dfe7f0;
+  --day-today-bg: rgba(122, 166, 194, 0.2);
+  --day-today-text: #eaf2f7;
+}
+
+/* === Light theme === */
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #e8ecf0;
+  --bg-gradient: linear-gradient(135deg, #dce3ea, #f0f2f5 80%);
+  --panel: #ffffff;
+  --panel-gradient: linear-gradient(150deg, #ffffff, #f5f6f8);
+  --panel-soft: #eef0f4;
+  --text: #1a1e24;
+  --muted: #5a6478;
+  --accent: #3a7db8;
+  --accent-2: #4e8a72;
+  --shadow: rgba(0, 0, 0, 0.1);
+  --flip-bg: linear-gradient(180deg, #e8ecf0 0%, #d4dae2 100%);
+  --flip-text: #1a1e24;
+  --day-today-bg: rgba(58, 125, 184, 0.15);
+  --day-today-text: #1a3050;
+}
+
+/* === AMOLED theme === */
+[data-theme="amoled"] {
+  color-scheme: dark;
+  --bg: #000000;
+  --bg-gradient: none;
+  --panel: #0a0a0a;
+  --panel-gradient: none;
+  --panel-soft: #141414;
+  --text: #e0e0e0;
+  --muted: #777;
+  --accent: #4fc3f7;
+  --accent-2: #81c784;
+  --shadow: rgba(0, 0, 0, 0.6);
+  --flip-bg: linear-gradient(180deg, #111 0%, #000 100%);
+  --flip-text: #e0e0e0;
+  --day-today-bg: rgba(79, 195, 247, 0.2);
+  --day-today-text: #b3e5fc;
 }
 
 * {
@@ -20,9 +66,11 @@
 body {
   margin: 0;
   font-family: "Inter", "SF Pro Text", "Segoe UI", sans-serif;
-  background: radial-gradient(circle at top left, #4c5f82, #273852 80%);
+  background: var(--bg-gradient, var(--bg));
+  background-color: var(--bg);
   color: var(--text);
   min-height: 100vh;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 
@@ -46,6 +94,80 @@ body {
 .settings-toggle:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
+}
+
+.status-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.theme-toggle {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(27, 32, 40, 0.8);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.theme-toggle:hover {
+  background: rgba(34, 40, 50, 0.95);
+  color: var(--text);
+}
+
+[data-theme="light"] .theme-toggle {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.12);
+  color: var(--muted);
+}
+
+[data-theme="light"] .theme-toggle:hover {
+  background: rgba(0, 0, 0, 0.1);
+  color: var(--text);
+}
+
+[data-theme="light"] .settings-toggle {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.12);
+}
+
+[data-theme="light"] .settings-toggle:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.calendar-view-toggle {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  font-size: 1rem;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: background 0.2s, color 0.2s;
+  flex-shrink: 0;
+}
+
+.calendar-view-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+}
+
+[data-theme="light"] .calendar-view-toggle {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="light"] .calendar-view-toggle:hover {
+  background: rgba(0, 0, 0, 0.08);
 }
 
 .settings-meta,
@@ -74,7 +196,7 @@ body {
 }
 
 .panel {
-  background: linear-gradient(150deg, var(--panel), #1d222c);
+  background: var(--panel-gradient, var(--panel));
   border-radius: var(--radius);
   box-shadow: 0 20px 40px var(--shadow);
   padding: 12px;
@@ -111,8 +233,8 @@ body {
   width: 46px;
   height: 40px;
   border-radius: 8px;
-  background: linear-gradient(180deg, #2d3646 0%, #1c222c 100%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 6px 12px rgba(0, 0, 0, 0.35);
+  background: var(--flip-bg);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 6px 12px var(--shadow);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -436,8 +558,8 @@ body.show-settings .settings-panel {
 
 .day.today {
   margin-left: 12px;
-  background: rgba(122, 166, 194, 0.2);
-  color: #eaf2f7;
+  background: var(--day-today-bg);
+  color: var(--day-today-text);
   font-weight: 600;
   border: thin dashed red ;
 }
@@ -574,7 +696,7 @@ body.show-settings .settings-panel {
   margin: 0;
   font-size: 0.95rem;
   letter-spacing: 0.04em;
-  color: #dfe7f0;
+  color: var(--text);
 }
 
 .trading-panel {
@@ -837,4 +959,121 @@ body.show-trading .calculator-panel {
 
 .key:active {
   transform: translateY(1px);
+}
+
+/* === Year Overview (compact calendar view) === */
+.year-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.year-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.04em;
+  text-align: center;
+  padding: 4px 0;
+}
+
+.year-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.year-month-mini {
+  background: var(--panel-soft);
+  border-radius: 10px;
+  padding: 6px 8px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.year-month-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 3px;
+}
+
+.year-month-label.current {
+  color: var(--accent);
+}
+
+.year-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0;
+  font-size: 0.58rem;
+  line-height: 1.5;
+  text-align: center;
+  font-family: "Droid Sans Mono", monospace;
+}
+
+.year-day {
+  color: var(--text);
+}
+
+.year-day.empty {
+  visibility: hidden;
+}
+
+.year-day.weekend {
+  color: var(--muted);
+}
+
+.year-day.today {
+  background: var(--accent);
+  color: #fff;
+  border-radius: 3px;
+  font-weight: 700;
+}
+
+[data-theme="light"] .year-day.today {
+  color: #fff;
+}
+
+/* === Light theme overrides for tabs === */
+[data-theme="light"] .panel-tabs {
+  background: linear-gradient(180deg, rgba(220, 225, 232, 0.8), rgba(210, 215, 224, 0.9));
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .tab-btn {
+  background: rgba(255, 255, 255, 0.7);
+  border-color: rgba(0, 0, 0, 0.08);
+  color: #5a6478;
+}
+
+[data-theme="light"] .tab-btn.active {
+  background: linear-gradient(180deg, #fff, #f5f7fa);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+[data-theme="light"] .tab-btn:hover {
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--text);
+}
+
+[data-theme="light"] .tab-placeholder {
+  border-color: rgba(0, 0, 0, 0.15);
+  background: rgba(0, 0, 0, 0.02);
+}
+
+/* === Light theme overrides for flip clock === */
+[data-theme="light"] .flip-sep {
+  color: #5a6478;
+}
+
+[data-theme="light"] .flip-clock {
+  color: var(--text);
+}
+
+/* === Light theme overrides for fx panel === */
+[data-theme="light"] .fx-card {
+  background: var(--panel-soft);
 }

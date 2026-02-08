@@ -19,18 +19,45 @@
 - ✅ Removed duplicate cookie functions from `js/script.js` and `js/calculator.js`
 - ✅ Updated callers to pass explicit `maxAgeSeconds` where needed
 
+## Shared Number Utilities — Completed @2026-02-08
+- ✅ Expanded `js/utils/number-utils.js` with `normalizeDecimal`, `isNumericString`
+- ✅ Removed duplicate `round3()`, `normalizeDecimal()`, `isNumericString()` from `js/calc-sheet.js`
+- ✅ `calc-sheet.js` now imports `roundToDecimals`, `normalizeDecimal`, `isNumericString` from shared module
+- ✅ `formatNumber()` stays local in both `calculator.js` and `calc-sheet.js` (different purposes — see note below)
+
+## Algebraic Add/Sub Simplification — Completed @2026-02-08
+- ✅ `_handleEqual()` add/sub branch now prints the operation result directly (like mult/div does)
+  — previously printed only the accumulator as 'T', conflating the expression result with the running total
+- ✅ After the result, a running subtotal 'S' line is printed on tape (mirrors mult/div behavior)
+- ✅ Constant calculation (`lastOperation`) now supports `+` and `-` operators
+  — previously only `x` and `÷` were handled in constant calc
+- ✅ Restructured `_handleEqual` scenario priority: constant calc runs before the fallback Total
+- ✅ Removed vestigial state variables `awaitingAddSubTotal` and `addSubTotalPendingClear`
+  — they were set in 5 places but never read in any conditional
+- ✅ Removed duplicate state declarations in constructor (pendingAddSubOp etc. were declared twice)
+
+## Editable Tape & Undo Improvements — Completed @2026-02-08
+- ✅ Added `editEntry(index, newVal)` method to `CalculatorEngine`
+  — validates entry is editable, creates undo checkpoint, modifies value, recalculates, refreshes tape
+- ✅ `renderSingleEntry(entry, entryIndex)` now accepts an optional entry index
+- ✅ `onTapePrint` and `onTapeRefresh` callbacks pass the correct index to `renderSingleEntry`
+- ✅ Editable input entries show a dotted underline on hover and respond to double-click
+- ✅ Double-click opens an inline text input; Enter/blur commits, Escape cancels
+- ✅ Non-editable entries (results, totals, constants, clear) are excluded via `nonEditableKeys` set
+- ✅ Added CSS for `.tape-editable` and `.tape-edit-input` in `calculator.css`
+
 ## Known Code Duplication (Future Refactoring)
 
 ### Math/Number Formatting
-`formatNumber()` exists in two files but serves **different purposes** — do NOT unify blindly:
+`formatNumber()` exists in two files but serves **different purposes** — do NOT unify:
 - `js/calculator.js` → VFD display formatter (thousands separator `'`, locale comma, respects DEC switch)
 - `js/calc-sheet.js` → spreadsheet cell formatter (3-decimal, comma, no thousands separator)
 
-Shared pure helpers that **could** be extracted to `js/utils/number-utils.js`:
-- `roundToDecimals(value, decimals)` — `js/calculator-engine.js`
-- `round3(value)` — `js/calc-sheet.js` (special case of `roundToDecimals`)
-- `normalizeDecimal(value)` — `js/calc-sheet.js` (could benefit `calculator-engine.js`)
-- `isNumericString(value)` — `js/calc-sheet.js` only
+Shared helpers are now in `js/utils/number-utils.js`:
+- ✅ `roundToDecimals(value, decimals)` — used by `calculator-engine.js` and `calc-sheet.js`
+- ✅ `applyRounding(value, mode, decimals)` — used by `calculator-engine.js`
+- ✅ `normalizeDecimal(value)` — used by `calc-sheet.js`
+- ✅ `isNumericString(value)` — used by `calc-sheet.js`
 
 ### Date/Time Functions
 Date formatting appears in multiple places:
@@ -47,14 +74,38 @@ Math functions in `js/moon.js`:
 
 These are specific to astronomical calculations and best left in `moon.js`.
 
+## Theme System — Completed @2026-02-08
+- ✅ Added CSS custom properties for 3 themes: Dark (default), Light, AMOLED
+- ✅ Created `js/ui/theme.js` module (`setTheme`, `cycleTheme`, `restoreTheme`, `bindThemeToggle`)
+- ✅ Theme choice persisted via cookie (`dashboard-theme`)
+- ✅ Theme toggle button added to status card header
+- ✅ Replaced hardcoded colors in `styles.css` with CSS variables where applicable
+- ✅ Added light-theme overrides for panels, tabs, flip clock, calendar, FX card
+
+## Tabs Module — Completed @2026-02-08
+- ✅ Created reusable `js/ui/tabs.js` module (`initTabs(container, options)`)
+- ✅ Removed inline tab logic from `js/script.js` (was duplicated twice in `initDashboard`)
+- ✅ Tab init moved to `js/main.js` — single source of truth
+- ✅ Supports `onTabChange` callback for extensibility
+
+## Calendar Dynamic Views — Completed @2026-02-08
+- ✅ Created `js/ui/calendar-views.js` with registry pattern (`registerCalendarView`, `setCalendarView`, `cycleCalendarView`)
+- ✅ Registered two views: **Griglia** (existing month cards) and **Anno** (compact 12-month year overview)
+- ✅ Added `renderYearOverview()` in `js/script.js` — year-at-a-glance with today highlighted
+- ✅ Toggle button (☰) in calendar header cycles views
+- ✅ Wheel scroll and middle-click reset restricted to grid view
+- ✅ CSS for `.year-overview`, `.year-grid`, `.year-month-mini`, `.year-day` added
+
 ## Remaining Refactoring Targets
 
 ### R3 — Split `calculator-engine.js` (HIGH priority) — IN PROGRESS
-- ~~File is ~1 738 lines~~ → now ~1 648 lines after extraction
+- ~~File is ~1 738 lines~~ → now ~1 665 lines after extraction + cleanup
 - **Completed steps** @2026-02-07:
   1. ✅ Extracted business-math helpers → `js/engine/business-math.js` (8 pure functions, JSDoc)
-  2. ✅ Extracted rounding helpers → `js/utils/number-utils.js` (`roundToDecimals`, `applyRounding`)
+  2. ✅ Extracted rounding helpers → `js/utils/number-utils.js` (`roundToDecimals`, `applyRounding`, `normalizeDecimal`, `isNumericString`)
   3. ✅ `calculator-engine.js` now imports from both modules
+  4. ✅ Added `editEntry()` method for tape editing @2026-02-08
+  5. ✅ Removed vestigial state, cleaned duplicate declarations @2026-02-08
 - **Remaining steps**:
   3. Extract undo/redo + memory state → `js/engine/state.js`
   4. Keep `CalculatorEngine` class as orchestrator with a clean public API

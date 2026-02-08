@@ -1,3 +1,5 @@
+import { roundToDecimals, normalizeDecimal, isNumericString } from './utils/number-utils.js';
+
 function initCalcSheet() {
   const COLS = 11;
   const ROWS = 32;
@@ -567,7 +569,7 @@ function initCalcSheet() {
 
     try {
       const result = Function(`"use strict"; return (${withValues});`)();
-      return typeof result === "number" ? round3(result) : NaN;
+      return typeof result === "number" ? roundToDecimals(result, 3) : NaN;
     } catch {
       return NaN;
     }
@@ -619,7 +621,7 @@ function initCalcSheet() {
       }
     });
 
-    return round3(sum);
+    return roundToDecimals(sum, 3);
   }
 
   function getNumericValue(cellId, stack) {
@@ -630,24 +632,14 @@ function initCalcSheet() {
       return evaluateFormula(raw.slice(1), [...stack, cellId]);
     }
     const value = Number.parseFloat(normalizeDecimal(raw));
-    return Number.isFinite(value) ? round3(value) : 0;
+    return Number.isFinite(value) ? roundToDecimals(value, 3) : 0;
   }
 
-  function isNumericString(value) {
-    return /^[-+]?((\d+([.,]\d*)?)|(\d*[.,]\d+))$/.test(value.trim());
-  }
 
-  function round3(value) {
-    return Math.round(value * 1000) / 1000;
-  }
 
   function formatNumber(value) {
     if (!Number.isFinite(value)) return "ERR";
     return value.toFixed(3).replace(".", ",");
-  }
-
-  function normalizeDecimal(value) {
-    return value.replace(/\./g, ",").replace(",", ".");
   }
 
   function translateFormula(raw, deltaRow, deltaCol) {
@@ -669,6 +661,7 @@ function initCalcSheet() {
   function colorToValue(color) {
     if (color === "blue") return "#1f4aa8";
     if (color === "red") return "#b7261d";
+    if (color === "green") return "#0b7a3a";
     return "#2d2a20";
   }
 

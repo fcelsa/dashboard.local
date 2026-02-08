@@ -48,3 +48,23 @@ export function applyRounding(value, mode = 'none', decimals = 2) {
 
   return roundToDecimals(value, decimals);
 }
+
+/**
+ * Replace comma-based decimal separators with dots for parseFloat.
+ * E.g. "1.234,56" → "1234.56"
+ * @param {string} value
+ * @returns {string}
+ */
+export function normalizeDecimal(value) {
+  return value.replace(/\./g, ",").replace(",", ".");
+}
+
+/**
+ * Check whether a string represents a numeric value
+ * (supports both dot and comma as decimal separator).
+ * @param {string} value
+ * @returns {boolean}
+ */
+export function isNumericString(value) {
+  return /^[-+]?((\d+([.,]\d*)?)|(\d*[.,]\d+))$/.test(value.trim());
+}

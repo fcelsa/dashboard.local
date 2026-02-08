@@ -1,5 +1,11 @@
 import { getCookie, setCookie, deleteCookie } from './utils/cookies.js';
 import { renderMoonPhase } from './moon.js';
+import {
+  registerCalendarView,
+  initCalendarViews,
+  setCalendarView,
+  getCalendarView,
+} from './ui/calendar-views.js';
 
 const monthsContainer = document.getElementById("months");
 const flipClock = document.getElementById("flip-clock");
@@ -21,8 +27,6 @@ const fxKeyForm = document.getElementById("fx-key-form");
 const fxKeyInput = document.getElementById("freecurrency-key");
 const fxKeyStatus = document.getElementById("fx-key-status");
 const fxKeyClearBtn = document.getElementById("clear-freecurrency-key");
-const tabButtons = document.querySelectorAll(".tab-btn");
-const tabPanels = document.querySelectorAll(".tab-panel");
 const calendarContextMenu = document.createElement("div");
 
 let fxHistory = null;
@@ -238,9 +242,77 @@ function renderMonths() {
   }
 }
 
+/**
+ * Render a compact year overview showing all 12 months at a glance.
+ * Each month shows a minimal day grid with today highlighted.
+ * @param {HTMLElement} container
+ */
+function renderYearOverview(container) {
+  container.innerHTML = "";
+  const now = new Date();
+  const year = now.getFullYear();
+
+  const yearWrap = document.createElement("div");
+  yearWrap.className = "year-overview";
+
+  const yearTitle = document.createElement("div");
+  yearTitle.className = "year-title";
+  yearTitle.textContent = String(year);
+  yearWrap.appendChild(yearTitle);
+
+  const grid = document.createElement("div");
+  grid.className = "year-grid";
+
+  for (let m = 0; m < 12; m++) {
+    const mini = document.createElement("div");
+    mini.className = "year-month-mini";
+
+    const label = document.createElement("div");
+    label.className = "year-month-label";
+    label.textContent = monthNames[m].substring(0, 3);
+    if (m === now.getMonth()) label.classList.add("current");
+    mini.appendChild(label);
+
+    const daysWrap = document.createElement("div");
+    daysWrap.className = "year-days";
+
+    const firstDay = new Date(year, m, 1);
+    const lastDay = new Date(year, m + 1, 0);
+    const startDow = (firstDay.getDay() + 6) % 7; // Mon=0
+
+    // Empty cells for offset
+    for (let s = 0; s < startDow; s++) {
+      const spacer = document.createElement("span");
+      spacer.className = "year-day empty";
+      daysWrap.appendChild(spacer);
+    }
+
+    for (let d = 1; d <= lastDay.getDate(); d++) {
+      const dayEl = document.createElement("span");
+      dayEl.className = "year-day";
+      dayEl.textContent = d;
+      const dayDate = new Date(year, m, d);
+      const dow = dayDate.getDay();
+      if (dow === 0 || dow === 6) dayEl.classList.add("weekend");
+      if (d === now.getDate() && m === now.getMonth() && year === now.getFullYear()) {
+        dayEl.classList.add("today");
+      }
+      daysWrap.appendChild(dayEl);
+    }
+
+    mini.appendChild(daysWrap);
+    grid.appendChild(mini);
+  }
+
+  yearWrap.appendChild(grid);
+  container.appendChild(yearWrap);
+}
+
 
 function handleWheel(event) {
   event.preventDefault();
+  // Only scroll months in grid view
+  if (getCalendarView() !== 'grid') return;
   if (isScrolling) return;
 
   isScrolling = true;
@@ -422,22 +494,6 @@ function updateFxKeyStatus() {
   } else {
     fxKeyStatus.textContent = "Nessuna chiave salvata.";
   }
-}
-
-function setActiveTab(tabId) {
-  tabButtons.forEach((btn) => {
-    const isActive = btn.dataset.tab === tabId;
-    btn.classList.toggle("active", isActive);
-    btn.setAttribute("aria-selected", isActive ? "true" : "false");
-  });
-
-  tabPanels.forEach((panel) => {
-    const isActive = panel.dataset.tabPanel === tabId;
-    panel.classList.toggle("active", isActive);
-    if (panel.id === "settings-panel") {
-      panel.setAttribute("aria-hidden", isActive ? "false" : "true");
-    }
-  });
 }
 
 function getCachedSessionRate() {
@@ -1062,11 +1118,29 @@ function initDashboard() {
   monthsContainer.addEventListener("mousedown", (event) => {
     if (event.button !== 1) return;
     event.preventDefault();
+    if (getCalendarView() !== 'grid') return;
     startOffset = -1;
     renderMonths();
   });
 
-  renderMonths();
+  // --- Calendar Views ---
+  // Register the default grid view (reuses existing renderMonths)
+  registerCalendarView('grid', ' ▦ ', () => {
+    renderMonths();
+  });
+
+  // Register a compact year overview
+  registerCalendarView('year', ' ⊞ ', (container) => {
+    renderYearOverview(container);
+  });
+
+  // Initialise the view system (default = grid, renders immediately)
+  initCalendarViews(
+    monthsContainer,
+    document.getElementById('calendar-view-toggle'),
+    'grid'
+  );
+
   scheduleMidnightRefresh();
   updateClock();
   scheduleMinuteRefresh();
@@ -1114,21 +1188,7 @@ function initDashboard() {
     });
   }
 
-  if (tabButtons.length > 0) {
-    tabButtons.forEach((btn) => {
-      btn.addEventListener("click", () => {
-        setActiveTab(btn.dataset.tab);
-      });
-    });
-  }
-
-  if (tabButtons.length > 0) {
-    tabButtons.forEach((btn) => {
-      btn.addEventListener("click", () => {
-        setActiveTab(btn.dataset.tab);
-      });
-    });
-  }
+  // Tabs are now initialised in main.js via tabs.js module
 
   if (fxKeyForm) {
     fxKeyForm.addEventListener("submit", (event) => {

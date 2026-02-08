@@ -30,17 +30,10 @@ class CalculatorEngine {
         this.lastOperation = null; // Stores { op: 'x', operand: 10 } for constant calc
         this.lastAddSubValue = null;
         this.lastAddSubOp = null;
+        // Add/Sub chaining state
         this.pendingAddSubOp = null;
         this.addSubOperand = null;
-        this.awaitingAddSubTotal = false;
         this.addSubResults = [];
-        this.addSubTotalPendingClear = false;
-        // Add/Sub chaining state (make + and - behave like x/÷)
-        this.pendingAddSubOp = null;
-        this.addSubOperand = null;
-        this.awaitingAddSubTotal = false;
-        this.addSubResults = [];
-        this.addSubTotalPendingClear = false;
         this.lastMultDivResult = null;
         this.awaitingMultDivTotal = false;
         this.multDivTotalPendingClear = false;
@@ -135,6 +128,36 @@ class CalculatorEngine {
         const snapshot = this.redoStack.pop();
         this.undoStack.push(this._snapshotEntries());
         this._restoreSnapshot(snapshot);
+        return true;
+    }
+
+    /**
+     * Edit the numeric value of a tape entry and recalculate the full tape.
+     * Only 'input' entries with user-typed values can be edited.
+     * @param {number} index - position in this.entries
+     * @param {number} newVal - replacement numeric value
+     * @returns {boolean} true if the edit was applied
+     */
+    editEntry(index, newVal) {
+        if (index < 0 || index >= this.entries.length) return false;
+        const entry = this.entries[index];
+        if (!entry || entry.type !== 'input') return false;
+
+        // Keys that represent computed/structural rows — not editable
+        const NON_EDITABLE_KEYS = new Set([
+            'T1', 'S1', 'GT', 'C', 'CLEAR_ALL', 'CONST', 'RATE', 'K'
+        ]);
+        if (NON_EDITABLE_KEYS.has(entry.key)) return false;
+
+        this._checkpoint();
+        entry.val = newVal;
+        this._recalculate();
+
+        // Refresh tape UI with rebuilt entries
+        if (this.onTapeRefresh) {
+            this.onTapeRefresh(this.entries);
+        }
+        this._emitStatus();
         return true;
     }
 
@@ -521,7 +544,9 @@ class CalculatorEngine {
         // and didn't type the second operand yet), subsequent operator presses
         // should not emit a new tape entry. If the operator changes (from + to -
         // or viceversa), update the pending operator and refresh the tape UI.
-        if (this.pendingAddSubOp && this.isNewSequence) {
+        // During replay (explicitVal provided) always process — isNewSequence stays
+        // true between replayed entries because no digit input occurs. @2026-02-08
+        if (this.pendingAddSubOp && this.isNewSequence && explicitVal === null) {
             if (op === this.pendingAddSubOp) {
                 return; // no effect
             }
@@ -567,7 +592,7 @@ class CalculatorEngine {
             this.addSubResults = [];
             this.addSubOperand = val;
         } else {
-            if (!this.isNewSequence) {
+            if (!this.isNewSequence || explicitVal !== null) {
                 let interRes = 0;
                 if (this.pendingAddSubOp === '+') {
                     interRes = this.addSubOperand + val;
@@ -681,9 +706,7 @@ class CalculatorEngine {
         // Exiting any add/sub chain when starting mult/div
         this.pendingAddSubOp = null;
         this.addSubOperand = null;
-        this.awaitingAddSubTotal = false;
         this.addSubResults = [];
-        this.addSubTotalPendingClear = false;
         if (this.pendingMultDivOp && this.isNewSequence && this.currentInput === "0" && this.constantK !== null && this.constantK !== 0) {
             this._handleEqual(this.constantK);
             return;
@@ -712,7 +735,9 @@ class CalculatorEngine {
         // --- CHAINING LOGIC ---
         // If there is already a pending operation (e.g. 10 x 5 x ...), 
         // we must execute the previous one first.
-        if (this.pendingMultDivOp && !this.isNewSequence) {
+        // During replay (explicitVal provided) always chain — isNewSequence stays
+        // true between replayed entries. @2026-02-08
+        if (this.pendingMultDivOp && (!this.isNewSequence || explicitVal !== null)) {
              let interRes = 0;
              if (this.pendingMultDivOp === 'x') {
                  interRes = this.multDivOperand * val;
@@ -975,7 +1000,7 @@ class CalculatorEngine {
 
         // --- SCENARIO A: Normal Calculation (A op B =) ---
         if (this.pendingAddSubOp) {
-            // Handle pending add/sub chain
+            // Algebraic add/sub: compute result directly (like mult/div)
             let val = explicitVal !== null ? explicitVal : parseFloat(this.currentInput);
 
             let res = 0;
@@ -993,29 +1018,34 @@ class CalculatorEngine {
             const resRounded = this._applyRoundingWithFlag(res);
             res = resRounded.value;
 
-            // For add/sub we print only the Total line (T) aligned right, not an intermediate result
-            // Accumulate into GT and accumulator
+            // Print result line (algebraic, no special symbol — mirrors mult/div)
+            this._addHistoryEntry({
+                val: this._formatResult(res),
+                symbol: '',
+                key: '=',
+                type: 'result',
+                roundingFlag: resRounded.roundingFlag
+            });
+            if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(res));
+
             this._accumulateGT(res);
             this.accumulator += res;
             this.accumulator = parseFloat(Number(this.accumulator).toPrecision(15));
 
+            // Print running subtotal on tape (mirrors mult/div 'S' line)
             const accumRounded = this._applyRoundingWithFlag(this.accumulator);
-            // Print Total with symbol 'T'
             this._addHistoryEntry({
                 val: this._formatResult(accumRounded.value),
-                symbol: 'T',
-                key: 'T',
+                symbol: 'S',
+                key: 'S',
                 type: 'result',
                 roundingFlag: accumRounded.roundingFlag
             });
-            if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(accumRounded.value));
 
             this.lastAddSubValue = val;
             this.lastAddSubOp = this.pendingAddSubOp;
             this.lastMultDivResult = null;
-            this.awaitingAddSubTotal = true;
             this.addSubResults.push(res);
-            this.addSubTotalPendingClear = false;
 
             this.currentInput = String(res);
             this.isNewSequence = true;
@@ -1127,18 +1157,10 @@ class CalculatorEngine {
             this._emitStatus();
             return;
         }
-        // --- SCENARIO B: Add/Sub Total via = ---
-        else if (this.lastAddSubValue !== null || this.accumulator !== 0) {
-            this._handleTotal(1);
-            return;
-        }
-        // --- SCENARIO C: Constant Calculation (C =) ---
+        // --- Constant Calculation (repeat last op on new value) ---
         else if (this.lastOperation) {
-            // Check if we should clear the stack (Double Press of =)
-            // "se viene premuto uan seconda volta... azzera quello stack"
-            
             if (this.isNewSequence) {
-                // User pressed = immediately after a result. CLEAR STACK.
+                // User pressed = immediately after a result — clear constant
                 this.lastOperation = null;
                 return;
             }
@@ -1151,7 +1173,7 @@ class CalculatorEngine {
             this._addHistoryEntry({ val, symbol: '', key: '=', type: 'input' });
 
             // 2. Print the Constant Factor being applied (Visual Feed)
-            // Marked as 'info' so Replay doesn't try to processing it as input
+            // Marked as 'info' so Replay doesn't try to process it as input
             this._addHistoryEntry({ 
                 val: this.lastOperation.operand, 
                 symbol: this.lastOperation.op, 
@@ -1167,6 +1189,10 @@ class CalculatorEngine {
                      this._triggerError("Error"); return;
                 }
                 res = val / this.lastOperation.operand;
+            } else if (this.lastOperation.op === '+') {
+                res = val + this.lastOperation.operand;
+            } else if (this.lastOperation.op === '-') {
+                res = val - this.lastOperation.operand;
             }
 
             const resRounded = this._applyRoundingWithFlag(res);
@@ -1191,15 +1217,13 @@ class CalculatorEngine {
             this._emitStatus();
             
             // Do NOT clear lastOperation. User can chain multiple constants: 2.2 =, 3.5 =, etc.
-            
+        }
+        // --- Fallback: Show total if accumulator has content ---
+        else if (this.accumulator !== 0) {
+            this._handleTotal(1);
+            return;
         }
         else {
-            // No pending op, No constant.
-            if (this.lastAddSubValue !== null || this.accumulator !== 0) {
-                this._handleTotal(1);
-                return;
-            }
-            // If we just finished a sequence (e.g. just printed a result), do NOT repeat print.
             if (this.isNewSequence) return;
         }
     }
@@ -1383,9 +1407,7 @@ class CalculatorEngine {
         this.lastAddSubOp = null;
         this.pendingAddSubOp = null;
         this.addSubOperand = null;
-        this.awaitingAddSubTotal = false;
         this.addSubResults = [];
-        this.addSubTotalPendingClear = false;
         this.lastMultDivResult = null;
         this.awaitingMultDivTotal = false;
         this.multDivResults = [];

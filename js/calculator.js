@@ -126,14 +126,15 @@ document.addEventListener("DOMContentLoaded", () => {
         if (suppressClearPrint && entry?.symbol === "C" && entry?.key === "C") {
             return;
         }
-        renderSingleEntry(entry);
+        // Index is the last position in the engine entries array
+        renderSingleEntry(entry, engine.entries.length - 1);
     };
 
-    // Implements Full Refund (Clear & Redraw for Undo)
+    // Implements Full Refund (Clear & Redraw for Undo / Edit)
     engine.onTapeRefresh = (entries) => {
         if (!paperTape) return;
         paperTape.innerHTML = ''; // Clear
-        entries.forEach(entry => renderSingleEntry(entry));
+        entries.forEach((entry, idx) => renderSingleEntry(entry, idx));
         updateTapeCount();
         const lastEntry = entries[entries.length - 1];
         if (lastEntry?.type === 'result') {
@@ -280,8 +281,77 @@ document.addEventListener("DOMContentLoaded", () => {
         iconBusiness.className = isOn ? 'vfd-icon on' : 'vfd-icon off';
     };
 
+    // Keys whose tape entries should NOT be editable
+    const nonEditableKeys = new Set([
+        'T1', 'S1', 'GT', 'C', 'CLEAR_ALL', 'CONST', 'RATE', 'K', '#'
+    ]);
+
+    /**
+     * Check whether a tape entry is user-editable.
+     * @param {Object} entry
+     * @returns {boolean}
+     */
+    const isEntryEditable = (entry) => {
+        if (!entry || entry.type !== 'input') return false;
+        if (entry.type === 'info') return false;
+        return !nonEditableKeys.has(entry.key);
+    };
+
+    /**
+     * Turn a tape value span into an inline editor.
+     * On commit the engine recalculates the full tape.
+     * @param {HTMLElement} valSpan
+     * @param {number} entryIndex - position in engine.entries
+     */
+    function startTapeEdit(valSpan, entryIndex) {
+        if (entryIndex < 0) return;
+        const entry = engine.entries[entryIndex];
+        if (!entry) return;
+
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "tape-edit-input";
+        // Show the raw numeric value so the user can edit the actual number
+        input.value = String(entry.val);
+
+        valSpan.textContent = "";
+        valSpan.appendChild(input);
+        input.focus();
+        input.select();
+
+        let committed = false;
+        const commitEdit = () => {
+            if (committed) return;
+            committed = true;
+            const rawVal = input.value.replace(',', '.');
+            const newVal = parseFloat(rawVal);
+            if (!isNaN(newVal) && newVal !== entry.val) {
+                engine.editEntry(entryIndex, newVal);
+            } else {
+                // Restore current tape (cancel or same value)
+                if (engine.onTapeRefresh) {
+                    engine.onTapeRefresh(engine.entries);
+                }
+            }
+        };
+
+        input.addEventListener("blur", commitEdit, { once: true });
+        input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                input.blur(); // triggers commitEdit via blur
+            } else if (e.key === "Escape") {
+                committed = true;
+                // Restore without changes
+                if (engine.onTapeRefresh) {
+                    engine.onTapeRefresh(engine.entries);
+                }
+            }
+        });
+    }
+
     // Appends a single entry to the existing DOM tape
-    function renderSingleEntry(entry) {
+    function renderSingleEntry(entry, entryIndex) {
         if (!paperTape) return;
         
         const row = document.createElement("div");
@@ -361,6 +431,13 @@ document.addEventListener("DOMContentLoaded", () => {
             displayVal = `${displayVal} ↓`;
         }
         valSpan.textContent = displayVal;
+
+        // Make editable entries respond to double-click
+        if (isEntryEditable(entry) && typeof entryIndex === 'number' && entryIndex >= 0) {
+            valSpan.classList.add("tape-editable");
+            const idx = entryIndex; // capture for closure
+            valSpan.addEventListener("dblclick", () => startTapeEdit(valSpan, idx));
+        }
 
         const symSpan = document.createElement("span");
         symSpan.className = "tape-symbol";
