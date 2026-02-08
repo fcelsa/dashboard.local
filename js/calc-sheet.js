@@ -755,10 +755,6 @@ function initCalcSheet() {
         db.close();
         hasPendingSave = false;
         updateSaveIndicator();
-        // Trigger auto-sync after sheet state saved
-        if (window.scheduleSyncToGist) {
-          window.scheduleSyncToGist();
-        }
       };
       transaction.onerror = () => {
         db.close();

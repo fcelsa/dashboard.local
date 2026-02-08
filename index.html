@@ -93,8 +93,36 @@
           </div>
           <div class="status-meta" id="settings-meta" aria-live="polite">
             <div class="settings-build">ver. 0.5.0</div>
-            <div class="sync-status" id="sync-status-badge" title="Stato sincronizzazione con GitHub">💾</div>
           </div>
+        </div>
+        
+        <div class="github-sync-section">
+          <div class="sync-indicators">
+            <div class="sync-indicator" id="github-login-status" title="Stato connessione GitHub">
+              <span class="indicator-icon">⊙</span>
+              <span class="indicator-text">GitHub</span>
+            </div>
+            <div class="sync-indicator" id="token-status" title="Stato token memorizzato">
+              <span class="indicator-icon">🔑</span>
+              <span class="indicator-text">Token</span>
+            </div>
+            <div class="sync-indicator" id="gist-url-indicator" title="Stato URL Gist">
+              <span class="indicator-icon">📎</span>
+              <span class="indicator-text">Gist URL</span>
+            </div>
+          </div>
+          
+          <div class="sync-buttons">
+            <button type="button" id="gist-load-btn" class="sync-btn load-btn" 
+              title="Carica lo stato dal Gist">
+              ↓ Carica
+            </button>
+            <button type="button" id="gist-save-btn" class="sync-btn save-btn"
+              title="Salva lo stato sul Gist">
+              ↑ Salva
+            </button>
+          </div>
+        </div>
       </section>
 
       <section class="panel calculator-panel" id="calculator-panel">
@@ -383,8 +411,8 @@
           <div class="settings-group">
             <h3>GitHub Gist API</h3>
             <p class="hint">
-              Inserisci il tuo personal access token per GitHub Gist.
-              Verrà salvato nel browser (cookie).
+              Inserisci il tuo personal access token per GitHub Gist e l'URL del Gist.
+              Verranno salvati nel browser (cookie).
             </p>
             <form class="settings-form" id="gist-key-form" autocomplete="off">
               <label class="settings-label" for="gist-token">GitHub Token</label>
@@ -397,6 +425,17 @@
                 </button>
               </div>
               <p class="settings-status" id="gist-key-status">Nessun token salvato.</p>
+              
+              <label class="settings-label" for="gist-url">URL Gist</label>
+              <div class="settings-row">
+                <input class="settings-input" id="gist-url" name="gist-url" type="text"
+                  placeholder="es: https://gist.github.com/username/abc123def456" spellcheck="false" />
+                <button class="settings-btn primary" type="button" id="save-gist-url">Salva</button>
+                <button class="settings-btn" type="button" id="clear-gist-url">
+                  Rimuovi
+                </button>
+              </div>
+              <p class="settings-status" id="gist-url-status">Nessun URL salvato.</p>
             </form>
           </div>
         </div>

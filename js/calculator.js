@@ -14,10 +14,11 @@ import {
   getUserSnapshotCount
 } from './utils/calc-history-db.js';
 import {
-  syncDashboardToGist,
-  syncDashboardFromGist,
+  getGistToken,
   getDashboardState,
-  restoreDashboardState
+  restoreDashboardState,
+  saveToGistUrl,
+  loadFromGistUrl
 } from './utils/dashboard-sync.js';
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -32,7 +33,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     const calculatorWrapper = document.querySelector(".calculator-wrapper");
     const paperTape = document.getElementById("paper-tape");
     const keys = document.querySelectorAll(".key-btn");
-    const syncStatusBadge = document.getElementById("sync-status-badge");
     const iconMem = document.getElementById("icon-mem");
     const iconGT = document.getElementById("icon-gt");
     const iconGTValue = document.getElementById("icon-gt-value");
@@ -137,85 +137,150 @@ document.addEventListener("DOMContentLoaded", async () => {
         calculatorWrapper && (calculatorWrapper.matches(':hover') || calculatorWrapper.matches(':focus-within'))
     );
 
-    // --- AUTO-SYNC STATE ---
-    let syncTimer = null;
-    const SYNC_DEBOUNCE_MS = 30000; // 30 sec
-    let lastSyncStatus = 'idle'; // idle, syncing, success, error
+    // --- GITHUB SYNC UI ---
+    const gistLoadBtn = document.getElementById("gist-load-btn");
+    const gistSaveBtn = document.getElementById("gist-save-btn");
+    const githubLoginStatus = document.getElementById("github-login-status");
+    const tokenStatus = document.getElementById("token-status");
+    const gistUrlIndicator = document.getElementById("gist-url-indicator");
+    
+    const GIST_TOKEN_COOKIE_KEY = 'githubGistToken';
+    const GIST_URL_COOKIE_KEY = 'dashboardGistUrl';
     
     /**
-     * Schedule automatic sync to Gist (debounced)
-     * Multiple calls within 30s will be coalesced into one sync
-     * @2026-02-08 Auto-sync logic for dashboard state backup
+     * Get Gist token from cookies
      */
-    function scheduleSyncToGist() {
-        clearTimeout(syncTimer);
-        syncTimer = setTimeout(async () => {
-            await performAutoSync();
-        }, SYNC_DEBOUNCE_MS);
+    function getGistTokenFromCookie() {
+      const token = getCookie(GIST_TOKEN_COOKIE_KEY);
+      return token ? token.trim() : null;
     }
     
     /**
-     * Execute auto-sync and update badge
+     * Get Gist URL from cookies
+     */
+    function getGistUrlFromCookie() {
+      const url = getCookie(GIST_URL_COOKIE_KEY);
+      return url ? url.trim() : null;
+    }
+    
+    /**
+     * Update GitHub status indicators in Status Card
+     * Shows GitHub auth status, token presence, and Gist URL status
      * @2026-02-08
      */
-    async function performAutoSync() {
-        if (!syncStatusBadge) return; // Safety check
+    function updateGitHubStatusIndicators() {
+        const hasToken = getGistTokenFromCookie() !== null;
+        const hasUrl = getGistUrlFromCookie() !== null;
         
-        try {
-            lastSyncStatus = 'syncing';
-            syncStatusBadge.textContent = '⟳';
-            syncStatusBadge.classList.add('syncing');
-            syncStatusBadge.style.opacity = '0.6';
-            
-            const result = await syncDashboardToGist();
-            
-            syncStatusBadge.classList.remove('syncing');
-            
-            if (result.success) {
-                lastSyncStatus = 'success';
-                syncStatusBadge.textContent = '✓';
-                syncStatusBadge.style.opacity = '1';
-                syncStatusBadge.title = `Sincronizzato: ${new Date().toLocaleTimeString('it-IT')}`;
-                // Revert to idle state after 2 seconds
-                setTimeout(() => {
-                    if (lastSyncStatus === 'success') {
-                        lastSyncStatus = 'idle';
-                        syncStatusBadge.textContent = '💾';
-                        syncStatusBadge.title = 'Stato sincronizzazione con GitHub';
-                    }
-                }, 2000);
-            } else {
-                // Sync failed, show warning and retry in 10s
-                lastSyncStatus = 'error';
-                syncStatusBadge.textContent = '⚠';
-                syncStatusBadge.style.opacity = '1';
-                syncStatusBadge.title = `Errore sync: ${result.message} - Retry in 10s`;
-                console.warn('Dashboard auto-sync failed:', result.message);
-                // Retry after 10 seconds
-                setTimeout(() => {
-                    if (lastSyncStatus === 'error') {
-                        scheduleSyncToGist();
-                    }
-                }, 10000);
-            }
-        } catch (err) {
-            lastSyncStatus = 'error';
-            syncStatusBadge.classList.remove('syncing');
-            syncStatusBadge.textContent = '⚠';
-            syncStatusBadge.style.opacity = '1';
-            syncStatusBadge.title = `Errore sync: ${err.message} - Retry in 10s`;
-            console.error('Dashboard auto-sync error:', err);
-            // Retry after 10 seconds
-            setTimeout(() => {
-                if (lastSyncStatus === 'error') {
-                    scheduleSyncToGist();
+        // Check GitHub authentication by attempting to verify token
+        if (hasToken) {
+            fetch('https://api.github.com/user', {
+                headers: {
+                    'Authorization': `token ${getGistTokenFromCookie()}`,
+                    'Accept': 'application/vnd.github.v3+json'
                 }
-            }, 10000);
+            }).then(response => {
+                const isAuthenticated = response.ok;
+                if (githubLoginStatus) {
+                    githubLoginStatus.classList.toggle('active', isAuthenticated);
+                }
+            }).catch(err => {
+                if (githubLoginStatus) {
+                    githubLoginStatus.classList.remove('active');
+                }
+            });
+        } else if (githubLoginStatus) {
+            githubLoginStatus.classList.remove('active');
         }
+        
+        // Show token status
+        if (tokenStatus) {
+            tokenStatus.classList.toggle('active', hasToken);
+        }
+        
+        // Show Gist URL status
+        if (gistUrlIndicator) {
+            gistUrlIndicator.classList.toggle('active', hasUrl);
+        }
+        
+        // Update button states
+        updateSyncButtonStates();
     }
     
-    // Expose auto-sync for other modules (calc-sheet.js)
-    window.scheduleSyncToGist = scheduleSyncToGist;
+    /**
+     * Update load/save button disabled state based on conditions
+     */
+    function updateSyncButtonStates() {
+        const hasToken = getGistTokenFromCookie() !== null;
+        const hasUrl = getGistUrlFromCookie() !== null;
+        const canSync = hasToken && hasUrl;
+        
+        if (gistLoadBtn) gistLoadBtn.disabled = !canSync;
+        if (gistSaveBtn) gistSaveBtn.disabled = !canSync;
+    }
+    
+    // Event listener for Load button
+    if (gistLoadBtn) {
+        gistLoadBtn.addEventListener('click', async () => {
+            const gistUrl = getGistUrlFromCookie();
+            if (!gistUrl) {
+                alert('Configura l\'URL del Gist nelle Impostazioni');
+                return;
+            }
+            gistLoadBtn.disabled = true;
+            gistLoadBtn.textContent = '↓ Caricamento...';
+            try {
+                const result = await loadFromGistUrl(gistUrl);
+                if (result.success) {
+                    alert(`✓ ${result.message}`);
+                    if (result.requiresReload) {
+                        setTimeout(() => location.reload(), 500);
+                    }
+                } else {
+                    alert(`⚠ ${result.message}`);
+                }
+            } catch (err) {
+                alert(`Errore: ${err.message}`);
+            } finally {
+                gistLoadBtn.disabled = false;
+                gistLoadBtn.textContent = '↓ Carica';
+                updateSyncButtonStates();
+            }
+        });
+    }
+    
+    // Event listener for Save button
+    if (gistSaveBtn) {
+        gistSaveBtn.addEventListener('click', async () => {
+            const gistUrl = getGistUrlFromCookie();
+            if (!gistUrl) {
+                alert('Configura l\'URL del Gist nelle Impostazioni');
+                return;
+            }
+            gistSaveBtn.disabled = true;
+            gistSaveBtn.textContent = '↑ Salvataggio...';
+            try {
+                const state = await getDashboardState();
+                const result = await saveToGistUrl(gistUrl, state);
+                if (result.success) {
+                    alert(`✓ ${result.message}`);
+                } else {
+                    alert(`⚠ ${result.message}`);
+                }
+            } catch (err) {
+                alert(`Errore: ${err.message}`);
+            } finally {
+                gistSaveBtn.disabled = false;
+                gistSaveBtn.textContent = '↑ Salva';
+                updateSyncButtonStates();
+            }
+        });
+    }
+    
+    // Initial status check
+    updateGitHubStatusIndicators();
+    // Re-check status periodically (every 30 seconds)
+    setInterval(updateGitHubStatusIndicators, 30000);
 
     // --- ENGINE ---
     const engine = new CalculatorEngine();
@@ -946,9 +1011,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         // --- DISPATCH TO ENGINE ---
         engine.pressKey(engineKey);
-        
-        // Schedule auto-sync on state change (debounced)
-        scheduleSyncToGist();
     }
 
     function mapKeyboardToAction(eventOrKey) {
@@ -1254,15 +1316,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     async function handleSaveSnapshot(name) {
         const snapshot = engine.getStateSnapshot();
         await saveUserSnapshot(name, snapshot);
-        
-        // Attempt to sync entire dashboard to GitHub Gist
-        const result = await syncDashboardToGist();
-        
-        if (result.success) {
-            alert(`Calcolo "${name}" salvato con successo!\n✓ Dashboard sincronizzata su GitHub Gist`);
-        } else {
-            alert(`Calcolo "${name}" salvato localmente.\n⚠ Sincronizzazione GitHub: ${result.message}`);
-        }
+        alert(`✓ Calcolo "${name}" salvato con successo!`);
     }
 
     /**
@@ -1351,60 +1405,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         const buttons = document.createElement("div");
         buttons.className = "calc-dialog-buttons";
         
-        // Sync buttons
-        const syncDownBtn = document.createElement("button");
-        syncDownBtn.className = "calc-dialog-btn";
-        syncDownBtn.textContent = "↓ Carica da GitHub";
-        syncDownBtn.title = "Sincronizza l'intera dashboard da GitHub Gist";
-        syncDownBtn.addEventListener("click", async () => {
-            syncDownBtn.disabled = true;
-            syncDownBtn.textContent = "⟳ Caricamento...";
-            try {
-                const result = await syncDashboardFromGist();
-                if (result.success) {
-                    alert(`✓ ${result.message}`);
-                    if (result.requiresReload) {
-                        alert("La pagina sarà ricaricata per applicare le modifiche...");
-                        setTimeout(() => location.reload(), 500);
-                    } else {
-                        // Refresh the list with loaded snapshots
-                        overlay.remove();
-                        showLoadDialog();
-                    }
-                } else {
-                    alert(`⚠ ${result.message}`);
-                    syncDownBtn.disabled = false;
-                    syncDownBtn.textContent = "↓ Carica da GitHub";
-                }
-            } catch (err) {
-                alert(`Errore sincronizzazione: ${err.message}`);
-                syncDownBtn.disabled = false;
-                syncDownBtn.textContent = "↓ Carica da GitHub";
-            }
-        });
-        
-        const syncUpBtn = document.createElement("button");
-        syncUpBtn.className = "calc-dialog-btn";
-        syncUpBtn.textContent = "↑ Salva su GitHub";
-        syncUpBtn.title = "Sincronizza l'intera dashboard su GitHub Gist";
-        syncUpBtn.addEventListener("click", async () => {
-            syncUpBtn.disabled = true;
-            syncUpBtn.textContent = "⟳ Salvataggio...";
-            try {
-                const result = await syncDashboardToGist();
-                if (result.success) {
-                    alert(`✓ ${result.message}`);
-                } else {
-                    alert(`⚠ ${result.message}`);
-                }
-            } catch (err) {
-                alert(`Errore sincronizzazione: ${err.message}`);
-            } finally {
-                syncUpBtn.disabled = false;
-                syncUpBtn.textContent = "↑ Salva su GitHub";
-            }
-        });
-        
         const closeBtn = document.createElement("button");
         closeBtn.className = "calc-dialog-btn";
         closeBtn.textContent = "Chiudi";
@@ -1412,8 +1412,6 @@ document.addEventListener("DOMContentLoaded", async () => {
             overlay.remove();
         });
         
-        buttons.appendChild(syncDownBtn);
-        buttons.appendChild(syncUpBtn);
         buttons.appendChild(closeBtn);
         
         dialog.appendChild(header);
@@ -1434,11 +1432,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         engine.restoreStateSnapshot(saved.snapshot);
         // Save as current state
         await saveCurrentState(engine.getStateSnapshot());
-        
-        // Sync dashboard to Gist (background, doesn't block)
-        syncDashboardToGist().catch(err => {
-            console.error('Background dashboard sync error:', err);
-        });
     }
 
     // 1. Mouse Click (Virtual Keys)

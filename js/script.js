@@ -31,6 +31,10 @@ const gistKeyForm = document.getElementById("gist-key-form");
 const gistKeyInput = document.getElementById("gist-token");
 const gistKeyStatus = document.getElementById("gist-key-status");
 const gistKeyClearBtn = document.getElementById("clear-gist-token");
+const gistUrlInput = document.getElementById("gist-url");
+const gistUrlStatus = document.getElementById("gist-url-status");
+const saveGistUrlBtn = document.getElementById("save-gist-url");
+const clearGistUrlBtn = document.getElementById("clear-gist-url");
 const calendarContextMenu = document.createElement("div");
 
 let fxHistory = null;
@@ -43,6 +47,7 @@ let gistToken = null;
 const fxSessionKey = "fxLatestSession";
 const freeCurrencyCookieKey = "freeCurrencyApiKey";
 const gistTokenCookieKey = "githubGistToken";
+const gistUrlCookieKey = "dashboardGistUrl";
 
 const weekdayLabels = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
 const monthNames = [
@@ -525,6 +530,33 @@ function updateGistKeyStatus() {
     gistKeyStatus.textContent = `Token salvato: ${maskApiKey(stored)}`;
   } else {
     gistKeyStatus.textContent = "Nessun token salvato.";
+  }
+}
+
+// --- GITHUB GIST URL ---
+function getGistUrlCookie() {
+  const url = getCookie(gistUrlCookieKey);
+  return url ? url.trim() : null;
+}
+
+function setGistUrlCookie(url) {
+  if (!url) return;
+  const oneYear = 60 * 60 * 24 * 365;
+  setCookie(gistUrlCookieKey, url, oneYear);
+}
+
+function clearGistUrlCookie() {
+  deleteCookie(gistUrlCookieKey);
+}
+
+function updateGistUrlStatus() {
+  if (!gistUrlStatus) return;
+  const stored = getGistUrlCookie();
+  if (stored) {
+    const displayUrl = stored.length > 50 ? `${stored.substring(0, 50)}...` : stored;
+    gistUrlStatus.textContent = `✓ Gist URL: ${displayUrl}`;
+  } else {
+    gistUrlStatus.textContent = "Nessun URL salvato.";
   }
 }
 
@@ -1268,8 +1300,29 @@ function initDashboard() {
     });
   }
 
+  if (saveGistUrlBtn) {
+    saveGistUrlBtn.addEventListener("click", () => {
+      const value = gistUrlInput?.value?.trim();
+      if (!value) {
+        if (gistUrlStatus) gistUrlStatus.textContent = "Inserisci un URL valido.";
+        return;
+      }
+      setGistUrlCookie(value);
+      if (gistUrlInput) gistUrlInput.value = "";
+      updateGistUrlStatus();
+    });
+  }
+
+  if (clearGistUrlBtn) {
+    clearGistUrlBtn.addEventListener("click", () => {
+      clearGistUrlCookie();
+      updateGistUrlStatus();
+    });
+  }
+
   updateFxKeyStatus();
   updateGistKeyStatus();
+  updateGistUrlStatus();
 }
 
 export { initDashboard };

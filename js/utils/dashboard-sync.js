@@ -1,38 +1,34 @@
 /**
  * Dashboard State Synchronization with GitHub Gist
- * Syncs ALL dashboard data (calculator, calc-sheet, calendar, etc) to GitHub Gist
+ * Manual sync: user provides Gist URL explicitly
  */
 
-import { getCookie, setCookie } from './cookies.js';
+import { getCookie } from './cookies.js';
 
 const GIST_TOKEN_COOKIE_KEY = 'githubGistToken';
-const GIST_ID_COOKIE_KEY = 'dashboardGistId';
 const GIST_DATA_FILENAME = 'dashboard-state.json';
 const GITHUB_API = 'https://api.github.com';
-const GIST_DESCRIPTION = 'Dashboard State Backup';
 
 /**
  * Get GitHub Gist token from cookies
  */
-function getGistToken() {
+export function getGistToken() {
   const key = getCookie(GIST_TOKEN_COOKIE_KEY);
   return key ? key.trim() : null;
 }
 
 /**
- * Get cached Dashboard Gist ID from cookies
+ * Extract Gist ID from Gist URL
+ * @example 'https://gist.github.com/user/abc123def456' -> 'abc123def456'
  */
-function getCachedGistId() {
-  const id = getCookie(GIST_ID_COOKIE_KEY);
-  return id ? id.trim() : null;
-}
-
-/**
- * Save Dashboard Gist ID to cookies (1 year expiry)
- */
-function setCachedGistId(gistId) {
-  if (gistId) {
-    setCookie(GIST_ID_COOKIE_KEY, gistId, 365);
+function extractGistId(gistUrl) {
+  if (!gistUrl) return null;
+  try {
+    const url = new URL(gistUrl);
+    const pathParts = url.pathname.split('/');
+    return pathParts[pathParts.length - 1] || null;
+  } catch {
+    return null;
   }
 }
 
@@ -471,10 +467,10 @@ export async function downloadDashboardGist(gistId) {
 }
 
 /**
- * Sync dashboard state TO GitHub Gist
- * Uses cached Gist ID if available, searches if not
+ * Save dashboard state TO a specific Gist URL
+ * @2026-02-08 Manual save with explicit Gist URL
  */
-export async function syncDashboardToGist() {
+export async function saveToGistUrl(gistUrl, state) {
   const token = getGistToken();
   if (!token) {
     return {
@@ -483,42 +479,39 @@ export async function syncDashboardToGist() {
     };
   }
 
+  const gistId = extractGistId(gistUrl);
+  if (!gistId) {
+    return {
+      success: false,
+      message: 'URL del Gist non valido'
+    };
+  }
+
   try {
-    const state = await getDashboardState();
-    let gistId = getCachedGistId();
+    const response = await fetch(`${GITHUB_API}/gists/${gistId}`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `token ${token}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        files: {
+          [GIST_DATA_FILENAME]: {
+            content: JSON.stringify(state, null, 2)
+          }
+        }
+      })
+    });
 
-    // If no cached ID, search/create
-    if (!gistId) {
-      gistId = await findDashboardGist();
+    if (!response.ok) {
+      throw new Error(`GitHub API error: ${response.status}`);
     }
 
-    if (!gistId) {
-      // No existing gist, create new one
-      gistId = await createDashboardGist(state);
-      if (!gistId) {
-        return {
-          success: false,
-          message: 'Errore nella creazione del backup'
-        };
-      }
-      return {
-        success: true,
-        message: 'Backup creato su GitHub Gist'
-      };
-    } else {
-      // Update existing gist
-      const success = await updateDashboardGist(gistId, state);
-      if (!success) {
-        return {
-          success: false,
-          message: 'Errore aggiornamento backup'
-        };
-      }
-      return {
-        success: true,
-        message: 'Backup sincronizzato con GitHub Gist'
-      };
-    }
+    return {
+      success: true,
+      message: 'Stato salvato su Gist'
+    };
   } catch (err) {
     return {
       success: false,
@@ -528,10 +521,10 @@ export async function syncDashboardToGist() {
 }
 
 /**
- * Sync dashboard state FROM GitHub Gist
- * Uses cached Gist ID if available, searches if not
+ * Load dashboard state FROM a specific Gist URL
+ * @2026-02-08 Manual load with explicit Gist URL
  */
-export async function syncDashboardFromGist() {
+export async function loadFromGistUrl(gistUrl) {
   const token = getGistToken();
   if (!token) {
     return {
@@ -540,30 +533,35 @@ export async function syncDashboardFromGist() {
     };
   }
 
+  const gistId = extractGistId(gistUrl);
+  if (!gistId) {
+    return {
+      success: false,
+      message: 'URL del Gist non valido'
+    };
+  }
+
   try {
-    let gistId = getCachedGistId();
+    const response = await fetch(`${GITHUB_API}/gists/${gistId}`, {
+      headers: {
+        'Authorization': `token ${token}`,
+        'Accept': 'application/vnd.github.v3+json'
+      }
+    });
 
-    // If no cached ID, search
-    if (!gistId) {
-      gistId = await findDashboardGist();
+    if (!response.ok) {
+      throw new Error(`GitHub API error: ${response.status}`);
     }
 
-    if (!gistId) {
-      return {
-        success: false,
-        message: 'Nessun backup trovato su GitHub Gist'
-      };
+    const gist = await response.json();
+    const fileContent = gist.files[GIST_DATA_FILENAME];
+    if (!fileContent || !fileContent.content) {
+      throw new Error('dashboard-state.json non trovato nel Gist');
     }
 
-    const remoteState = await downloadDashboardGist(gistId);
-    if (!remoteState) {
-      return {
-        success: false,
-        message: 'Errore download del backup'
-      };
-    }
-
+    const remoteState = JSON.parse(fileContent.content);
     const restored = await restoreDashboardState(remoteState);
+
     if (!restored) {
       return {
         success: false,
@@ -573,7 +571,7 @@ export async function syncDashboardFromGist() {
 
     return {
       success: true,
-      message: 'Dashboard ripristinato da GitHub Gist',
+      message: 'Stato caricato da Gist',
       requiresReload: true
     };
   } catch (err) {

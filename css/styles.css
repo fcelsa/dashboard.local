@@ -187,18 +187,103 @@ body {
   color: var(--text);
 }
 
-.sync-status {
-  font-size: 1.2rem;
-  line-height: 1;
-  letter-spacing: 0.04em;
-  cursor: default;
-  user-select: none;
-  transition: opacity 0.3s ease;
-  display: inline-block;
+.github-sync-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.sync-status.syncing {
-  animation: syncSpin 1s linear infinite;
+.sync-indicators {
+  display: flex;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.sync-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  cursor: default;
+  user-select: none;
+}
+
+.indicator-icon {
+  font-size: 1.2rem;
+  opacity: 0.4;
+  transition: opacity 0.3s ease;
+}
+
+.sync-indicator.active .indicator-icon {
+  opacity: 1;
+  color: #4ade80;
+}
+
+.indicator-text {
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.gist-url-input {
+  display: flex;
+}
+
+.gist-url-field {
+  flex: 1;
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: rgba(27, 32, 40, 0.8);
+  color: var(--text);
+  font-family: monospace;
+}
+
+.gist-url-field::placeholder {
+  color: var(--muted);
+}
+
+.gist-url-field:focus {
+  outline: none;
+  border-color: rgba(122, 166, 194, 0.5);
+  background: rgba(27, 32, 40, 0.95);
+}
+
+.sync-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.sync-btn {
+  flex: 1;
+  padding: 8px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: rgba(27, 32, 40, 0.8);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, opacity 0.2s;
+}
+
+.sync-btn:hover:not(:disabled) {
+  background: rgba(34, 40, 50, 0.95);
+  border-color: rgba(122, 166, 194, 0.5);
+}
+
+.sync-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.sync-btn.load-btn {
+  color: #7aa6c2;
+}
+
+.sync-btn.save-btn {
+  color: #7aa6c2;
 }
 
 .app {
