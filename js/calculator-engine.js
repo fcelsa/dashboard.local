@@ -227,7 +227,6 @@ class CalculatorEngine {
         this.awaitingMultDivTotal = false;
         this.multDivResults = [];
         this.multDivTotalPendingClear = false;
-        this.pendingAddSubPercent = null;
         this.pendingDelta = null;
         this.pendingPowerBase = null;
 
@@ -235,16 +234,12 @@ class CalculatorEngine {
             for (const entry of savedEntries) {
                 if (entry.type === 'input') {
                     // Logic dispatch
-                    if (entry.key === '%' && typeof entry.percentBase !== 'undefined' && typeof entry.percentValue !== 'undefined') {
-                        const base = Number(entry.percentBase);
-                        const signedPercentValue = Number(entry.percentValue);
-                        const res = this._applyRounding(base + signedPercentValue);
-                        this.accumulator = parseFloat(Number(res).toPrecision(15));
-                        this.currentInput = "0";
-                        this.isNewSequence = true;
-                        this.lastAddSubValue = null;
-                        this.lastAddSubOp = entry.percentOp || null;
-                        this.pendingAddSubPercent = null;
+                    if (entry.key === '%') {
+                        // Replay: set currentInput and let _handlePercent resolve
+                        // against current pending state (mult/div or add/sub)
+                        this.currentInput = String(entry.val);
+                        this.isNewSequence = false;
+                        this._handlePercent();
                     } else if (entry.key === 'Δ') {
                         this._handleDelta(entry.val, 'first');
                     } else if (entry.key === 'Δ2') {
@@ -452,9 +447,6 @@ class CalculatorEngine {
             this.multDivResults = [];
             this.multDivTotalPendingClear = false;
         }
-        if (this.pendingAddSubPercent) {
-            this.pendingAddSubPercent = null;
-        }
         // Reset Total Pending State on numeric input
         this.totalPendingState[1] = false;
 
@@ -479,9 +471,6 @@ class CalculatorEngine {
             this.multDivResults = [];
             this.multDivTotalPendingClear = false;
         }
-        if (this.pendingAddSubPercent) {
-            this.pendingAddSubPercent = null;
-        }
         if (this.isNewSequence) {
             this.currentInput = "0.";
             this.isNewSequence = false;
@@ -503,43 +492,6 @@ class CalculatorEngine {
         if (this.pendingPowerBase !== null) {
             this.pendingPowerBase = null;
         }
-        if (this.pendingAddSubPercent) {
-            const { base, percentInput } = this.pendingAddSubPercent;
-            const percentValue = this._applyRounding(base * (percentInput / 100));
-            const signedPercentValue = op === '-' ? -percentValue : percentValue;
-            const res = this._applyRounding(base + signedPercentValue);
-
-            this._addHistoryEntry({
-                val: percentInput,
-                symbol: '%',
-                key: '%',
-                type: 'input',
-                percentValue: signedPercentValue,
-                percentBase: base,
-                percentOp: op
-            });
-
-            this._addHistoryEntry({
-                val: this._formatResult(res),
-                symbol: 'T',
-                key: 'T',
-                type: 'result'
-            });
-
-            if (!this.isReplaying) {
-                this.onDisplayUpdate(this._formatResult(res));
-            }
-
-            this.accumulator = parseFloat(Number(res).toPrecision(15));
-            this.currentInput = "0";
-            this.isNewSequence = true;
-            this.lastAddSubValue = null;
-            this.lastAddSubOp = op;
-            this.pendingAddSubPercent = null;
-            this._emitStatus();
-            return;
-        }
-
         // If we're already waiting for the next operand (user pressed an operator
         // and didn't type the second operand yet), subsequent operator presses
         // should not emit a new tape entry. If the operator changes (from + to -
@@ -774,67 +726,110 @@ class CalculatorEngine {
     }
 
     _handlePercent() {
-        if (this.pendingDelta !== null) {
-            this.pendingDelta = null;
-        }
-        if (this.pendingPowerBase !== null) {
-            this.pendingPowerBase = null;
-        }
+        if (this.pendingDelta !== null) this.pendingDelta = null;
+        if (this.pendingPowerBase !== null) this.pendingPowerBase = null;
+
         const val = parseFloat(this.currentInput);
         if (isNaN(val)) return;
-        // Logos: percentuale solo con x/÷; per somma/sottrazione usare il cambio segno
-        if (!this.pendingMultDivOp) {
-            if (this.accumulator === null || typeof this.accumulator === 'undefined') return;
-            this.pendingAddSubPercent = {
-                base: this.accumulator,
-                percentInput: val
-            };
+
+        // CASE 1: Mult/Div — A × B% = A * B/100 ; A ÷ B% = A / (B/100)
+        if (this.pendingMultDivOp) {
+            const base = this.multDivOperand;
+            let res;
+
+            if (this.pendingMultDivOp === 'x') {
+                res = this._applyRounding(base * (val / 100));
+            } else if (this.pendingMultDivOp === '÷') {
+                if (val === 0 && !this.isReplaying) {
+                    this._triggerError("Error");
+                    return;
+                }
+                res = this._applyRounding(base / (val / 100));
+            }
+
+            // Tape: print input percentage
+            this._addHistoryEntry({ val, symbol: '%', key: '%', type: 'input' });
+
+            // Tape: print result
+            const resRounded = this._applyRoundingWithFlag(res);
+            res = resRounded.value;
+            this._addHistoryEntry({
+                val: this._formatResult(res),
+                symbol: '',
+                key: '=',
+                type: 'result',
+                roundingFlag: resRounded.roundingFlag
+            });
+            if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(res));
+
+            this._accumulateGT(res);
+            this.accumulator += res;
+            this.accumulator = parseFloat(Number(this.accumulator).toPrecision(15));
+
+            this.lastMultDivResult = res;
+            this.awaitingMultDivTotal = true;
+            this.multDivResults.push(res);
+            this.multDivTotalPendingClear = false;
+
+            this.currentInput = String(res);
             this.isNewSequence = true;
-            if (!this.isReplaying) this.onDisplayUpdate(this.currentInput + "%");
+            this.pendingMultDivOp = null;
+            this._emitStatus();
             return;
         }
 
-        if (!this.isReplaying) this.onDisplayUpdate(this.currentInput + "%");
+        // CASE 2: Add/Sub — A + B% = A + A*B/100 ; A - B% = A - A*B/100
+        // Resolves immediately (classic calculator behaviour) @2026-02-08
+        if (this.pendingAddSubOp) {
+            const base = this.addSubOperand;
+            if (base === null || base === undefined || isNaN(base)) return;
 
-        const base = this.multDivOperand;
-        const percentValue = this._applyRounding(base * (val / 100));
-        let res = percentValue;
-        if (this.pendingMultDivOp === '÷') {
-            if (val === 0 && !this.isReplaying) {
-                this._triggerError("Error");
-                return;
-            }
-            res = this._applyRounding(base / (val / 100));
+            const percentAmount = this._applyRounding(base * (val / 100));
+            const signedPercentValue = this.pendingAddSubOp === '-' ? -percentAmount : percentAmount;
+            let res = this._applyRounding(base + signedPercentValue);
+
+            // Tape: percentage input line with absolute value shown alongside
+            this._addHistoryEntry({
+                val: val,
+                symbol: '%',
+                key: '%',
+                type: 'input',
+                percentValue: signedPercentValue,
+                percentBase: base,
+                percentOp: this.pendingAddSubOp
+            });
+
+            // Tape: result total
+            const resRounded = this._applyRoundingWithFlag(res);
+            res = resRounded.value;
+            this._addHistoryEntry({
+                val: this._formatResult(res),
+                symbol: '*',
+                key: '%',
+                type: 'result',
+                roundingFlag: resRounded.roundingFlag
+            });
+
+            if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(res));
+
+            this._accumulateGT(res);
+            this.accumulator += res;
+            this.accumulator = parseFloat(Number(this.accumulator).toPrecision(15));
+
+            // Clean up add/sub chain state
+            this.pendingAddSubOp = null;
+            this.addSubOperand = null;
+            this.addSubResults = [];
+            this.lastAddSubValue = null;
+            this.lastAddSubOp = null;
+
+            this.currentInput = String(res);
+            this.isNewSequence = true;
+            this._emitStatus();
+            return;
         }
 
-        // Stampa risultato dell'operazione
-        const percentResRounded = this._applyRoundingWithFlag(res);
-        res = percentResRounded.value;
-        this._addHistoryEntry({
-            val: this._formatResult(res),
-            symbol: '%',
-            key: '%',
-            type: 'result',
-            percentValue,
-            roundingFlag: percentResRounded.roundingFlag
-        });
-        if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(res));
-
-        this._accumulateGT(res);
-
-        // Accumula il risultato nell'addizionatore
-        this.accumulator += res;
-        this.accumulator = parseFloat(Number(this.accumulator).toPrecision(15));
-
-        this.lastMultDivResult = res;
-        this.awaitingMultDivTotal = true;
-        this.multDivResults.push(res);
-        this.multDivTotalPendingClear = false;
-
-        this.currentInput = String(res);
-        this.isNewSequence = true;
-        this.pendingMultDivOp = null;
-        this._emitStatus();
+        // CASE 3: Standalone % — no pending operation (no-op on classic calculators)
     }
 
     _handleDelta(explicitVal = null, stage = null) {
@@ -852,7 +847,6 @@ class CalculatorEngine {
             this.lastMultDivResult = null;
             this.multDivResults = [];
             this.multDivTotalPendingClear = false;
-            this.pendingAddSubPercent = null;
             this.pendingDelta = val;
             this._addHistoryEntry({ val, symbol: 'Δ', key: 'Δ', type: 'input' });
             this.currentInput = "0";
@@ -860,8 +854,8 @@ class CalculatorEngine {
             return;
         }
 
-        const base = val;
-        const nuovoValore = this.pendingDelta;
+        const base = this.pendingDelta;     // first entered value (old/reference)
+        const nuovoValore = val;              // second entered value (new)
         if (base === 0) {
             if (!this.isReplaying) this._triggerError("Error");
             return;
@@ -871,7 +865,7 @@ class CalculatorEngine {
         const percentRounded = this._applyRoundingWithFlag((diff / base) * 100);
         const diffRounded = this._applyRoundingWithFlag(diff);
 
-        this._addHistoryEntry({ val: base, symbol: '=', key: 'Δ2', type: 'input' });
+        this._addHistoryEntry({ val: nuovoValore, symbol: '=', key: 'Δ2', type: 'input' });
         this._addHistoryEntry({
             val: this._formatResult(percentRounded.value),
             symbol: '%',
@@ -889,9 +883,9 @@ class CalculatorEngine {
 
         this._accumulateGT(diffRounded.value);
 
-        if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(diffRounded));
+        if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(diffRounded.value));
 
-        this.accumulator = parseFloat(Number(diffRounded).toPrecision(15));
+        this.accumulator = parseFloat(Number(diffRounded.value).toPrecision(15));
         this.currentInput = String(diffRounded.value);
         this.isNewSequence = true;
         this.pendingDelta = null;
@@ -907,7 +901,6 @@ class CalculatorEngine {
         this.lastMultDivResult = null;
         this.multDivResults = [];
         this.multDivTotalPendingClear = false;
-        this.pendingAddSubPercent = null;
         if (val < 0) {
             if (!this.isReplaying) this._triggerError("Error");
             return;
@@ -947,7 +940,6 @@ class CalculatorEngine {
             this.lastMultDivResult = null;
             this.multDivResults = [];
             this.multDivTotalPendingClear = false;
-            this.pendingAddSubPercent = null;
             this.pendingPowerBase = val;
             this._addHistoryEntry({ val, symbol: '^', key: '^', type: 'input' });
             this.currentInput = "0";
@@ -1412,7 +1404,6 @@ class CalculatorEngine {
         this.awaitingMultDivTotal = false;
         this.multDivResults = [];
         this.multDivTotalPendingClear = false;
-        this.pendingAddSubPercent = null;
         this.pendingDelta = null;
         this.pendingPowerBase = null;
         this.awaitingRate = false;
@@ -1438,7 +1429,6 @@ class CalculatorEngine {
 
     _clearEntry() {
         this.currentInput = "0";
-        this.pendingAddSubPercent = null;
         this.pendingDelta = null;
         this.pendingPowerBase = null;
         this.addModeBuffer = "";
