@@ -32,6 +32,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const calculatorWrapper = document.querySelector(".calculator-wrapper");
     const paperTape = document.getElementById("paper-tape");
     const keys = document.querySelectorAll(".key-btn");
+    const syncStatusBadge = document.getElementById("sync-status-badge");
     const iconMem = document.getElementById("icon-mem");
     const iconGT = document.getElementById("icon-gt");
     const iconGTValue = document.getElementById("icon-gt-value");
@@ -135,6 +136,86 @@ document.addEventListener("DOMContentLoaded", async () => {
     const isCalculatorFocused = () => Boolean(
         calculatorWrapper && (calculatorWrapper.matches(':hover') || calculatorWrapper.matches(':focus-within'))
     );
+
+    // --- AUTO-SYNC STATE ---
+    let syncTimer = null;
+    const SYNC_DEBOUNCE_MS = 30000; // 30 sec
+    let lastSyncStatus = 'idle'; // idle, syncing, success, error
+    
+    /**
+     * Schedule automatic sync to Gist (debounced)
+     * Multiple calls within 30s will be coalesced into one sync
+     * @2026-02-08 Auto-sync logic for dashboard state backup
+     */
+    function scheduleSyncToGist() {
+        clearTimeout(syncTimer);
+        syncTimer = setTimeout(async () => {
+            await performAutoSync();
+        }, SYNC_DEBOUNCE_MS);
+    }
+    
+    /**
+     * Execute auto-sync and update badge
+     * @2026-02-08
+     */
+    async function performAutoSync() {
+        if (!syncStatusBadge) return; // Safety check
+        
+        try {
+            lastSyncStatus = 'syncing';
+            syncStatusBadge.textContent = '⟳';
+            syncStatusBadge.classList.add('syncing');
+            syncStatusBadge.style.opacity = '0.6';
+            
+            const result = await syncDashboardToGist();
+            
+            syncStatusBadge.classList.remove('syncing');
+            
+            if (result.success) {
+                lastSyncStatus = 'success';
+                syncStatusBadge.textContent = '✓';
+                syncStatusBadge.style.opacity = '1';
+                syncStatusBadge.title = `Sincronizzato: ${new Date().toLocaleTimeString('it-IT')}`;
+                // Revert to idle state after 2 seconds
+                setTimeout(() => {
+                    if (lastSyncStatus === 'success') {
+                        lastSyncStatus = 'idle';
+                        syncStatusBadge.textContent = '💾';
+                        syncStatusBadge.title = 'Stato sincronizzazione con GitHub';
+                    }
+                }, 2000);
+            } else {
+                // Sync failed, show warning and retry in 10s
+                lastSyncStatus = 'error';
+                syncStatusBadge.textContent = '⚠';
+                syncStatusBadge.style.opacity = '1';
+                syncStatusBadge.title = `Errore sync: ${result.message} - Retry in 10s`;
+                console.warn('Dashboard auto-sync failed:', result.message);
+                // Retry after 10 seconds
+                setTimeout(() => {
+                    if (lastSyncStatus === 'error') {
+                        scheduleSyncToGist();
+                    }
+                }, 10000);
+            }
+        } catch (err) {
+            lastSyncStatus = 'error';
+            syncStatusBadge.classList.remove('syncing');
+            syncStatusBadge.textContent = '⚠';
+            syncStatusBadge.style.opacity = '1';
+            syncStatusBadge.title = `Errore sync: ${err.message} - Retry in 10s`;
+            console.error('Dashboard auto-sync error:', err);
+            // Retry after 10 seconds
+            setTimeout(() => {
+                if (lastSyncStatus === 'error') {
+                    scheduleSyncToGist();
+                }
+            }, 10000);
+        }
+    }
+    
+    // Expose auto-sync for other modules (calc-sheet.js)
+    window.scheduleSyncToGist = scheduleSyncToGist;
 
     // --- ENGINE ---
     const engine = new CalculatorEngine();
@@ -865,6 +946,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         // --- DISPATCH TO ENGINE ---
         engine.pressKey(engineKey);
+        
+        // Schedule auto-sync on state change (debounced)
+        scheduleSyncToGist();
     }
 
     function mapKeyboardToAction(eventOrKey) {
