@@ -1,9 +1,31 @@
 import { CalculatorEngine } from './calculator-engine.js';
 import { getCookie, setCookie } from './utils/cookies.js';
+import {
+  initCalcHistoryDB,
+  saveCurrentState,
+  loadCurrentState,
+  addHistorySnapshot,
+  getAllHistorySnapshots,
+  formatTimestamp,
+  saveUserSnapshot,
+  getAllUserSnapshots,
+  getUserSnapshot,
+  deleteUserSnapshot,
+  getUserSnapshotCount
+} from './utils/calc-history-db.js';
+import {
+  syncDashboardToGist,
+  syncDashboardFromGist,
+  getDashboardState,
+  restoreDashboardState
+} from './utils/dashboard-sync.js';
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   try {
-        // --- DOM ---
+        // --- DB INIT ---
+    await initCalcHistoryDB();
+
+    // --- DOM ---
     const vfdDisplay = document.getElementById("vfd-display");
     const vfdDisplayWrap = document.querySelector(".vfd-display");
     const vfdStack = document.getElementById("vfd-stack");
@@ -234,6 +256,8 @@ document.addEventListener("DOMContentLoaded", () => {
         pendingRateTimeout = null;
         if (vfdDisplayWrap) vfdDisplayWrap.classList.remove("is-blink");
     };
+
+    engine.onBeforeClearAll = handleBeforeClearAll;
 
     // --- TAPE VIEW ---
     keys.forEach((btn) => {
@@ -506,6 +530,148 @@ document.addEventListener("DOMContentLoaded", () => {
             }, 500);
         } else {
             suppressClearPrint = false;
+        }
+    }
+
+    // --- HISTORY / SNAPSHOTS ---
+    const historyIconsContainer = document.getElementById("calc-history-icons");
+    
+    /**
+     * Save current state and history snapshots to indexedDB
+     */
+    async function saveAllStates() {
+        try {
+            const snapshot = engine.getStateSnapshot();
+            await saveCurrentState(snapshot);
+        } catch (err) {
+            console.error("Error saving calculator state:", err);
+        }
+    }
+
+    /**
+     * Update the history icons display
+     */
+    async function renderHistoryIcons() {
+        try {
+            if (!historyIconsContainer) return;
+            const snapshots = await getAllHistorySnapshots();
+            historyIconsContainer.innerHTML = "";
+            
+            snapshots.slice(0, 8).forEach((snapshot, index) => {
+                const icon = document.createElement("button");
+                icon.className = "calc-history-icon";
+                icon.type = "button";
+                
+                // Number: 1 is most recent, 8 is oldest
+                const progressiveNumber = index + 1;
+                const timestamp = formatTimestamp(snapshot.timestamp);
+                
+                // Build preview: show number of entries and last value
+                const entriesCount = snapshot.entries ? snapshot.entries.length : 0;
+                const lastValue = snapshot.accumulator || snapshot.grandTotal || snapshot.currentInput || "0";
+                const preview = `[${entriesCount} entries]\nAcc: ${lastValue}`;
+                
+                icon.textContent = `${progressiveNumber}`;
+                icon.setAttribute("data-tooltip", `${timestamp}\n${preview}`);
+                icon.dataset.snapshotId = snapshot.id;
+                icon.addEventListener("click", () => restoreFromHistory(snapshot.id));
+                
+                // Add tooltip event listeners
+                icon.addEventListener("mouseover", (e) => showTooltip(e));
+                icon.addEventListener("mouseleave", () => hideTooltip());
+                
+                historyIconsContainer.appendChild(icon);
+            });
+        } catch (err) {
+            console.error("Error rendering history icons:", err);
+        }
+    }
+
+    /**
+     * Show tooltip for history icon
+     */
+    function showTooltip(evt) {
+        const icon = evt.target.closest(".calc-history-icon");
+        if (!icon) return;
+        
+        const tooltipText = icon.getAttribute("data-tooltip");
+        if (!tooltipText) return;
+        
+        // Remove any existing tooltip
+        hideTooltip();
+        
+        // Create tooltip element
+        const tooltip = document.createElement("div");
+        tooltip.className = "calc-history-tooltip";
+        tooltip.textContent = tooltipText;
+        document.body.appendChild(tooltip);
+        
+        // Position tooltip
+        const rect = icon.getBoundingClientRect();
+        const tooltipRect = tooltip.getBoundingClientRect();
+        
+        // Position above the icon, centered
+        let top = rect.top - tooltipRect.height - 8;
+        let left = rect.left + rect.width / 2 - tooltipRect.width / 2;
+        
+        // Adjust if off-screen (right side)
+        if (left + tooltipRect.width > window.innerWidth - 8) {
+            left = window.innerWidth - tooltipRect.width - 8;
+        }
+        // Adjust if off-screen (left side)
+        if (left < 8) {
+            left = 8;
+        }
+        // If no space above, show below
+        if (top < 8) {
+            top = rect.bottom + 8;
+        }
+        
+        tooltip.style.top = `${top}px`;
+        tooltip.style.left = `${left}px`;
+        
+        // Store reference for cleanup
+        tooltip.dataset.tooltipId = Date.now();
+        icon.dataset.activeTooltipId = tooltip.dataset.tooltipId;
+    }
+
+    /**
+     * Hide tooltip for history icon
+     */
+    function hideTooltip() {
+        const existingTooltip = document.querySelector(".calc-history-tooltip");
+        if (existingTooltip) {
+            existingTooltip.remove();
+        }
+    }
+
+    /**
+     * Restore calculator from a history snapshot
+     */
+    async function restoreFromHistory(snapshotId) {
+        try {
+            const { getHistorySnapshot } = await import('./utils/calc-history-db.js');
+            const snapshot = await getHistorySnapshot(snapshotId);
+            if (!snapshot) return;
+            engine.restoreStateSnapshot(snapshot);
+            await saveAllStates(); // Update current state
+        } catch (err) {
+            console.error("Error restoring from history:", err);
+        }
+    }
+
+    /**
+     * Handle before-clear callback: save state as history snapshot
+     */
+    async function handleBeforeClearAll(snapshot) {
+        try {
+            // Only save if there were entries (non-empty calculation)
+            if (snapshot.entries && snapshot.entries.length > 0) {
+                await addHistorySnapshot(snapshot);
+                await renderHistoryIcons();
+            }
+        } catch (err) {
+            console.error("Error adding history snapshot:", err);
         }
     }
 
@@ -909,6 +1075,286 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         const action = mapKeyboardToAction(event);
         setKeyActive(action, false);
+    }
+
+    // Render history icons at startup
+    renderHistoryIcons();
+
+    // --- SAVE/LOAD USER SNAPSHOTS ---
+    const calcSaveBtn = document.getElementById("calc-save-btn");
+    const calcLoadBtn = document.getElementById("calc-load-btn");
+    
+    if (calcSaveBtn) {
+        calcSaveBtn.addEventListener("click", showSaveDialog);
+    }
+    if (calcLoadBtn) {
+        calcLoadBtn.addEventListener("click", showLoadDialog);
+    }
+
+    /**
+     * Show save dialog with name input
+     */
+    async function showSaveDialog() {
+        const count = await getUserSnapshotCount();
+        if (count >= 8) {
+            alert("Non è possibile salvare: hai raggiunto il limite massimo di 8 calcoli salvati.\nEliminane uno per continuare.");
+            return;
+        }
+        
+        const overlay = document.createElement("div");
+        overlay.className = "calc-dialog-overlay";
+        
+        const dialog = document.createElement("div");
+        dialog.className = "calc-dialog";
+        
+        const header = document.createElement("div");
+        header.className = "calc-dialog-header";
+        header.innerHTML = "<h3>Salva il calcolo</h3>";
+        
+        const content = document.createElement("div");
+        content.className = "calc-dialog-content";
+        
+        const input = document.createElement("input");
+        input.className = "calc-dialog-input";
+        input.type = "text";
+        input.placeholder = "Nome del calcolo (max 30 caratteri)";
+        input.maxLength = "30";
+        
+        content.appendChild(input);
+        
+        const buttons = document.createElement("div");
+        buttons.className = "calc-dialog-buttons";
+        
+        const cancelBtn = document.createElement("button");
+        cancelBtn.className = "calc-dialog-btn";
+        cancelBtn.textContent = "Annulla";
+        cancelBtn.addEventListener("click", () => {
+            overlay.remove();
+        });
+        
+        const saveBtn = document.createElement("button");
+        saveBtn.className = "calc-dialog-btn primary";
+        saveBtn.textContent = "Salva";
+        saveBtn.addEventListener("click", async () => {
+            const name = input.value.trim();
+            if (!name) {
+                alert("Inserisci un nome per il calcolo.");
+                return;
+            }
+            try {
+                await handleSaveSnapshot(name);
+                overlay.remove();
+            } catch (err) {
+                alert(`Errore al salvataggio: ${err.message}`);
+            }
+        });
+        
+        buttons.appendChild(cancelBtn);
+        buttons.appendChild(saveBtn);
+        
+        dialog.appendChild(header);
+        dialog.appendChild(content);
+        dialog.appendChild(buttons);
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+        
+        input.focus();
+        input.addEventListener("keypress", (e) => {
+            if (e.key === "Enter") saveBtn.click();
+        });
+    }
+
+    /**
+     * Handle saving a snapshot with name
+     */
+    async function handleSaveSnapshot(name) {
+        const snapshot = engine.getStateSnapshot();
+        await saveUserSnapshot(name, snapshot);
+        
+        // Attempt to sync entire dashboard to GitHub Gist
+        const result = await syncDashboardToGist();
+        
+        if (result.success) {
+            alert(`Calcolo "${name}" salvato con successo!\n✓ Dashboard sincronizzata su GitHub Gist`);
+        } else {
+            alert(`Calcolo "${name}" salvato localmente.\n⚠ Sincronizzazione GitHub: ${result.message}`);
+        }
+    }
+
+    /**
+     * Show load dialog with list of saved snapshots
+     */
+    async function showLoadDialog() {
+        const snapshots = await getAllUserSnapshots();
+        
+        if (snapshots.length === 0) {
+            alert("Non hai alcun calcolo salvato.");
+            return;
+        }
+        
+        const overlay = document.createElement("div");
+        overlay.className = "calc-dialog-overlay";
+        
+        const dialog = document.createElement("div");
+        dialog.className = "calc-dialog";
+        
+        const header = document.createElement("div");
+        header.className = "calc-dialog-header";
+        header.innerHTML = "<h3>Carica un calcolo</h3>";
+        
+        const content = document.createElement("div");
+        content.className = "calc-dialog-content";
+        
+        const list = document.createElement("div");
+        list.className = "calc-dialog-list";
+        
+        snapshots.forEach((snapshot) => {
+            const item = document.createElement("div");
+            item.className = "calc-dialog-list-item";
+            
+            const info = document.createElement("div");
+            info.className = "calc-dialog-list-item-info";
+            
+            const name = document.createElement("div");
+            name.className = "calc-dialog-list-item-name";
+            name.textContent = snapshot.name;
+            
+            const meta = document.createElement("div");
+            meta.className = "calc-dialog-list-item-meta";
+            const entriesCount = snapshot.snapshot && snapshot.snapshot.entries ? snapshot.snapshot.entries.length : 0;
+            meta.textContent = `${entriesCount} entries • ${formatTimestamp(snapshot.timestamp)}`;
+            
+            info.appendChild(name);
+            info.appendChild(meta);
+            
+            const deleteBtn = document.createElement("button");
+            deleteBtn.className = "calc-dialog-list-item-delete";
+            deleteBtn.textContent = "×";
+            deleteBtn.title = "Elimina questo calcolo";
+            deleteBtn.addEventListener("click", async (e) => {
+                e.stopPropagation();
+                if (confirm(`Eliminare il calcolo "${snapshot.name}"?`)) {
+                    try {
+                        await deleteUserSnapshot(snapshot.id);
+                        item.remove();
+                        if (list.children.length === 0) {
+                            content.innerHTML = "<p style='color: #999; text-align: center;'>Nessun calcolo salvato.</p>";
+                        }
+                    } catch (err) {
+                        alert(`Errore eliminazione: ${err.message}`);
+                    }
+                }
+            });
+            
+            item.appendChild(info);
+            item.appendChild(deleteBtn);
+            
+            // Click name/info to load
+            info.addEventListener("click", async () => {
+                try {
+                    await handleLoadSnapshot(snapshot.id);
+                    overlay.remove();
+                } catch (err) {
+                    alert(`Errore caricamento: ${err.message}`);
+                }
+            });
+            
+            list.appendChild(item);
+        });
+        
+        content.appendChild(list);
+        
+        const buttons = document.createElement("div");
+        buttons.className = "calc-dialog-buttons";
+        
+        // Sync buttons
+        const syncDownBtn = document.createElement("button");
+        syncDownBtn.className = "calc-dialog-btn";
+        syncDownBtn.textContent = "↓ Carica da GitHub";
+        syncDownBtn.title = "Sincronizza l'intera dashboard da GitHub Gist";
+        syncDownBtn.addEventListener("click", async () => {
+            syncDownBtn.disabled = true;
+            syncDownBtn.textContent = "⟳ Caricamento...";
+            try {
+                const result = await syncDashboardFromGist();
+                if (result.success) {
+                    alert(`✓ ${result.message}`);
+                    if (result.requiresReload) {
+                        alert("La pagina sarà ricaricata per applicare le modifiche...");
+                        setTimeout(() => location.reload(), 500);
+                    } else {
+                        // Refresh the list with loaded snapshots
+                        overlay.remove();
+                        showLoadDialog();
+                    }
+                } else {
+                    alert(`⚠ ${result.message}`);
+                    syncDownBtn.disabled = false;
+                    syncDownBtn.textContent = "↓ Carica da GitHub";
+                }
+            } catch (err) {
+                alert(`Errore sincronizzazione: ${err.message}`);
+                syncDownBtn.disabled = false;
+                syncDownBtn.textContent = "↓ Carica da GitHub";
+            }
+        });
+        
+        const syncUpBtn = document.createElement("button");
+        syncUpBtn.className = "calc-dialog-btn";
+        syncUpBtn.textContent = "↑ Salva su GitHub";
+        syncUpBtn.title = "Sincronizza l'intera dashboard su GitHub Gist";
+        syncUpBtn.addEventListener("click", async () => {
+            syncUpBtn.disabled = true;
+            syncUpBtn.textContent = "⟳ Salvataggio...";
+            try {
+                const result = await syncDashboardToGist();
+                if (result.success) {
+                    alert(`✓ ${result.message}`);
+                } else {
+                    alert(`⚠ ${result.message}`);
+                }
+            } catch (err) {
+                alert(`Errore sincronizzazione: ${err.message}`);
+            } finally {
+                syncUpBtn.disabled = false;
+                syncUpBtn.textContent = "↑ Salva su GitHub";
+            }
+        });
+        
+        const closeBtn = document.createElement("button");
+        closeBtn.className = "calc-dialog-btn";
+        closeBtn.textContent = "Chiudi";
+        closeBtn.addEventListener("click", () => {
+            overlay.remove();
+        });
+        
+        buttons.appendChild(syncDownBtn);
+        buttons.appendChild(syncUpBtn);
+        buttons.appendChild(closeBtn);
+        
+        dialog.appendChild(header);
+        dialog.appendChild(content);
+        dialog.appendChild(buttons);
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+    }
+
+    /**
+     * Handle loading a snapshot
+     */
+    async function handleLoadSnapshot(id) {
+        const saved = await getUserSnapshot(id);
+        if (!saved) {
+            throw new Error("Calcolo non trovato");
+        }
+        engine.restoreStateSnapshot(saved.snapshot);
+        // Save as current state
+        await saveCurrentState(engine.getStateSnapshot());
+        
+        // Sync dashboard to Gist (background, doesn't block)
+        syncDashboardToGist().catch(err => {
+            console.error('Background dashboard sync error:', err);
+        });
     }
 
     // 1. Mouse Click (Virtual Keys)

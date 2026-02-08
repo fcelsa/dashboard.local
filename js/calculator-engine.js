@@ -84,6 +84,7 @@ class CalculatorEngine {
         this.onError = (msg) => {};
         this.onMemoryUpdate = (memory) => {};
         this.onRateUpdate = (rate) => {};
+        this.onBeforeClearAll = async (snapshot) => {}; // Called before CLEAR_ALL, pass current state
     }
 
     // --- SETTINGS ---
@@ -1389,7 +1390,98 @@ class CalculatorEngine {
     }
 
     // --- CLEAR / EDIT ---
+    // --- STATE SNAPSHOT ---
+    /**
+     * Get a snapshot of current calculator state for history/restore
+     */
+    getStateSnapshot() {
+        return {
+            entries: this._snapshotEntries(this.entries),
+            currentInput: this.currentInput,
+            accumulator: this.accumulator,
+            grandTotal: this.grandTotal,
+            pendingMultDivOp: this.pendingMultDivOp,
+            multDivOperand: this.multDivOperand,
+            isNewSequence: this.isNewSequence,
+            errorState: this.errorState,
+            totalPendingState: { ...this.totalPendingState },
+            lastOperation: this.lastOperation ? { ...this.lastOperation } : null,
+            lastAddSubValue: this.lastAddSubValue,
+            lastAddSubOp: this.lastAddSubOp,
+            pendingAddSubOp: this.pendingAddSubOp,
+            addSubOperand: this.addSubOperand,
+            addSubResults: [...this.addSubResults],
+            lastMultDivResult: this.lastMultDivResult,
+            awaitingMultDivTotal: this.awaitingMultDivTotal,
+            multDivResults: [...this.multDivResults],
+            multDivTotalPendingClear: this.multDivTotalPendingClear,
+            memoryRegister: this.memoryRegister,
+            memoryStack: [...this.memoryStack],
+            taxRate: this.taxRate,
+            marginPercent: this.marginPercent,
+            markupPercent: this.markupPercent,
+            costValue: this.costValue,
+            sellValue: this.sellValue,
+            pricingMode: this.pricingMode,
+            constantK: this.constantK,
+            gtPending: this.gtPending,
+            pendingDelta: this.pendingDelta,
+            pendingPowerBase: this.pendingPowerBase
+        };
+    }
+
+    /**
+     * Restore calculator state from a snapshot
+     */
+    restoreStateSnapshot(snapshot) {
+        if (!snapshot) return;
+        this.entries = this._snapshotEntries(snapshot.entries || []);
+        this.currentInput = snapshot.currentInput ?? "0";
+        this.accumulator = snapshot.accumulator ?? 0;
+        this.grandTotal = snapshot.grandTotal ?? 0;
+        this.pendingMultDivOp = snapshot.pendingMultDivOp ?? null;
+        this.multDivOperand = snapshot.multDivOperand ?? null;
+        this.isNewSequence = snapshot.isNewSequence ?? true;
+        this.errorState = snapshot.errorState ?? false;
+        this.totalPendingState = { ...(snapshot.totalPendingState || { 1: false }) };
+        this.lastOperation = snapshot.lastOperation ? { ...snapshot.lastOperation } : null;
+        this.lastAddSubValue = snapshot.lastAddSubValue ?? null;
+        this.lastAddSubOp = snapshot.lastAddSubOp ?? null;
+        this.pendingAddSubOp = snapshot.pendingAddSubOp ?? null;
+        this.addSubOperand = snapshot.addSubOperand ?? null;
+        this.addSubResults = [...(snapshot.addSubResults || [])];
+        this.lastMultDivResult = snapshot.lastMultDivResult ?? null;
+        this.awaitingMultDivTotal = snapshot.awaitingMultDivTotal ?? false;
+        this.multDivResults = [...(snapshot.multDivResults || [])];
+        this.multDivTotalPendingClear = snapshot.multDivTotalPendingClear ?? false;
+        this.memoryRegister = snapshot.memoryRegister ?? 0;
+        this.memoryStack = [...(snapshot.memoryStack || [])];
+        this.taxRate = snapshot.taxRate ?? 22;
+        this.marginPercent = snapshot.marginPercent ?? 0;
+        this.markupPercent = snapshot.markupPercent ?? 0;
+        this.costValue = snapshot.costValue ?? null;
+        this.sellValue = snapshot.sellValue ?? null;
+        this.pricingMode = snapshot.pricingMode ?? 'margin';
+        this.constantK = snapshot.constantK ?? null;
+        this.gtPending = snapshot.gtPending ?? false;
+        this.pendingDelta = snapshot.pendingDelta ?? null;
+        this.pendingPowerBase = snapshot.pendingPowerBase ?? null;
+        
+        // Refresh UI
+        this.onDisplayUpdate(this._formatResult(this.currentInput));
+        if (this.onTapeRefresh) this.onTapeRefresh(this.entries);
+        this._emitStatus();
+        this._emitMemoryUpdate();
+    }
+
+    // --- CLEAR ---
     _clearAll() {
+        // Save state before clearing
+        const snapshot = this.getStateSnapshot();
+        if (this.onBeforeClearAll) {
+            this.onBeforeClearAll(snapshot);
+        }
+
         this.accumulator = 0;
         this.grandTotal = 0;
         this.currentInput = "0";

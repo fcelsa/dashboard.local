@@ -27,6 +27,10 @@ const fxKeyForm = document.getElementById("fx-key-form");
 const fxKeyInput = document.getElementById("freecurrency-key");
 const fxKeyStatus = document.getElementById("fx-key-status");
 const fxKeyClearBtn = document.getElementById("clear-freecurrency-key");
+const gistKeyForm = document.getElementById("gist-key-form");
+const gistKeyInput = document.getElementById("gist-token");
+const gistKeyStatus = document.getElementById("gist-key-status");
+const gistKeyClearBtn = document.getElementById("clear-gist-token");
 const calendarContextMenu = document.createElement("div");
 
 let fxHistory = null;
@@ -35,8 +39,10 @@ let fxMiniSize = { width: 0, height: 0 };
 let fxChartEntries = [];
 let fxHoverIndex = null;
 let freeCurrencyKey = null;
+let gistToken = null;
 const fxSessionKey = "fxLatestSession";
 const freeCurrencyCookieKey = "freeCurrencyApiKey";
+const gistTokenCookieKey = "githubGistToken";
 
 const weekdayLabels = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
 const monthNames = [
@@ -493,6 +499,32 @@ function updateFxKeyStatus() {
     fxKeyStatus.textContent = `Chiave salvata: ${maskApiKey(stored)}`;
   } else {
     fxKeyStatus.textContent = "Nessuna chiave salvata.";
+  }
+}
+
+// --- GITHUB GIST TOKEN ---
+function getGistCookieKey() {
+  const key = getCookie(gistTokenCookieKey);
+  return key ? key.trim() : null;
+}
+
+function setGistCookieKey(key) {
+  if (!key) return;
+  const oneYear = 60 * 60 * 24 * 365;
+  setCookie(gistTokenCookieKey, key, oneYear);
+}
+
+function clearGistCookieKey() {
+  deleteCookie(gistTokenCookieKey);
+}
+
+function updateGistKeyStatus() {
+  if (!gistKeyStatus) return;
+  const stored = getGistCookieKey();
+  if (stored) {
+    gistKeyStatus.textContent = `Token salvato: ${maskApiKey(stored)}`;
+  } else {
+    gistKeyStatus.textContent = "Nessun token salvato.";
   }
 }
 
@@ -1213,7 +1245,31 @@ function initDashboard() {
     });
   }
 
+  if (gistKeyForm) {
+    gistKeyForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const value = gistKeyInput?.value?.trim();
+      if (!value) {
+        if (gistKeyStatus) gistKeyStatus.textContent = "Inserisci un token valido.";
+        return;
+      }
+      setGistCookieKey(value);
+      gistToken = value;
+      if (gistKeyInput) gistKeyInput.value = "";
+      updateGistKeyStatus();
+    });
+  }
+
+  if (gistKeyClearBtn) {
+    gistKeyClearBtn.addEventListener("click", () => {
+      clearGistCookieKey();
+      gistToken = null;
+      updateGistKeyStatus();
+    });
+  }
+
   updateFxKeyStatus();
+  updateGistKeyStatus();
 }
 
 export { initDashboard };

@@ -2,11 +2,20 @@
 
 .calculator-wrapper {
     display: grid;
-    grid-template-columns: 1fr 360px; /* Tastiera | Carta (Allargata a 360px) */
+    grid-template-columns: 1fr 360px; /* Corpo | Right Panel (Carta) */
+    grid-template-rows: 1fr auto;
     gap: 20px;
     height: 100%;
     align-items: start;
     font-family: "Inter", sans-serif;
+}
+
+/* --- Lato Destro: Paper --- */
+.calc-right-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    flex-grow: 1;
 }
 
 /* --- Lato Sinistro: Macchina --- */
@@ -596,7 +605,6 @@ button[data-key="CNT"]::after {
     overflow-y: scroll; /* Scrollbar sempre visibile per evitare "salto" layout */
     display: flex;
     flex-direction: column;
-    /* justify-content: flex-end; RIMOSSO perché rompe lo scroll su overflow */
     
     padding: 16px 8px;
     box-shadow: 
@@ -728,4 +736,309 @@ button[data-key="CNT"]::after {
 .tape-row.result-row .tape-symbol.tape-symbol-small {
     font-size: 0.8em;
     min-width: 12px;
+}
+/* --- History Snapshots --- */
+.calc-history-container {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    padding: 0;
+    flex-shrink: 0;
+    background: #272f47;
+    border-radius: 6px;
+    grid-column: 1 / -1;
+    gap: 6px;
+    padding: 8px;
+}
+
+.calc-history-controls {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+}
+
+.calc-save-btn,
+.calc-load-btn {
+    flex: 1;
+    padding: 6px 10px;
+    font-size: 0.85em;
+    font-family: "Inter", sans-serif;
+    font-weight: 600;
+    border: 1px solid #555;
+    border-radius: 3px;
+    background: #3a4556;
+    color: #e6e4d5;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.calc-save-btn:hover,
+.calc-load-btn:hover {
+    background: #4a5566;
+    border-color: #777;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.calc-save-btn:active,
+.calc-load-btn:active {
+    transform: translateY(1px);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.3);
+}
+
+.calc-history-icons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 4px 0;
+    width: 100%;
+    max-height: 80px;
+    overflow-y: auto;
+    overflow-x: auto;
+}
+
+.calc-history-icon {
+    padding: 3px 6px;
+    font-size: 0.65em;
+    font-family: "Droid Sans Mono", monospace;
+    background: #5674a0;
+    border: 1px solid #888;
+    border-radius: 2px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.12s ease;
+    flex-shrink: 0;
+    position: relative;
+}
+
+.calc-history-icon:hover {
+    background: #c0c0c0;
+    border-color: #555;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+    transform: translateY(-0.5px);
+}
+
+.calc-history-icon:hover::before {
+    content: none;
+}
+
+/* Stile Tooltip (creato dinamicamente da JS) */
+.calc-history-tooltip {
+    position: fixed;
+    background: #2a2a2a;
+    color: #f0f0f0;
+    padding: 6px 8px;
+    border-radius: 3px;
+    font-size: 0.75em;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-width: 200px;
+    z-index: 10000;
+    pointer-events: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    border: 1px solid #555;
+    text-align: left;
+    font-family: "Droid Sans Mono", monospace;
+    animation: tooltipFadeIn 0.15s ease-in-out;
+}
+
+@keyframes tooltipFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* --- Save/Load Dialogs --- */
+.calc-dialog-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 5000;
+    animation: fadeIn 0.2s ease-in-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.calc-dialog {
+    background: #556887;
+    border: 2px solid #3a3a3a;
+    border-radius: 6px;
+    padding: 20px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    max-width: 400px;
+    min-width: 300px;
+    color: #e6e4d5;
+    font-family: "Inter", sans-serif;
+}
+
+.calc-dialog-header {
+    margin-bottom: 16px;
+}
+
+.calc-dialog-header h3 {
+    margin: 0;
+    font-size: 1.1em;
+    color: #e6e4d5;
+}
+
+.calc-dialog-content {
+    margin-bottom: 16px;
+}
+
+.calc-dialog-input {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #777;
+    border-radius: 3px;
+    background: #3a4556;
+    color: #e6e4d5;
+    font-family: "Inter", sans-serif;
+    font-size: 0.95em;
+    box-sizing: border-box;
+}
+
+.calc-dialog-input:focus {
+    outline: none;
+    border-color: #89cff0;
+    box-shadow: 0 0 4px rgba(137, 207, 240, 0.3);
+}
+
+.calc-dialog-input::placeholder {
+    color: #888;
+}
+
+.calc-dialog-list {
+    border: 1px solid #777;
+    border-radius: 3px;
+    background: #3a4556;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.calc-dialog-list-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    border-bottom: 1px solid #454d5a;
+    cursor: pointer;
+    transition: background 0.1s ease;
+}
+
+.calc-dialog-list-item:last-child {
+    border-bottom: none;
+}
+
+.calc-dialog-list-item:hover {
+    background: #454d5a;
+}
+
+.calc-dialog-list-item-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.calc-dialog-list-item-name {
+    font-weight: 600;
+    color: #e6e4d5;
+    font-size: 0.95em;
+}
+
+.calc-dialog-list-item-meta {
+    font-size: 0.8em;
+    color: #999;
+}
+
+.calc-dialog-list-item-delete {
+    background: #d64545;
+    border: none;
+    color: #fff;
+    border-radius: 2px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 0.85em;
+    font-weight: 600;
+    margin-left: 8px;
+    transition: background 0.15s ease;
+}
+
+.calc-dialog-list-item-delete:hover {
+    background: #e85555;
+}
+
+.calc-dialog-list-item-delete:active {
+    transform: scale(0.95);
+}
+
+.calc-dialog-buttons {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
+
+.calc-dialog-btn {
+    padding: 8px 16px;
+    border: 1px solid #555;
+    border-radius: 3px;
+    background: #3a4556;
+    color: #e6e4d5;
+    font-family: "Inter", sans-serif;
+    font-size: 0.95em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.calc-dialog-btn:hover {
+    background: #4a5566;
+    border-color: #777;
+}
+
+.calc-dialog-btn:active {
+    transform: translateY(1px);
+}
+
+.calc-dialog-btn.primary {
+    background: #5f8a9e;
+    border-color: #3a6a8a;
+}
+
+.calc-dialog-btn.primary:hover {
+    background: #6f9aae;
+}
+
+.calc-dialog-btn.danger {
+    background: #d64545;
+    border-color: #b03535;
+}
+
+.calc-dialog-btn.danger:hover {
+    background: #e85555;
+}
+
+.calc-dialog-error {
+    color: #ff7777;
+    font-size: 0.85em;
+    margin-top: 8px;
+}
+
+.calc-history-icon:active {
+    transform: translateY(0);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);
 }
