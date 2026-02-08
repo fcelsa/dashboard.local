@@ -919,6 +919,66 @@ document.addEventListener("DOMContentLoaded", () => {
     // 2. Keyboard Input
     document.addEventListener("keydown", handleKeyboard);
     document.addEventListener("keyup", handleKeyboardUp);
+    // Paste from system clipboard into calculator when focused
+    function parseClipboardNumber(text) {
+        if (!text || typeof text !== 'string') return null;
+        let s = text.trim();
+        if (s === '') return null;
+        // Remove spaces and common thousands separators (apostrophe)
+        s = s.replace(/\s+/g, '');
+        s = s.replace(/'/g, '');
+
+        // Normalize decimal separators: prefer dot. Handle cases like "1.234,56" or "1,234.56"
+        const hasComma = s.indexOf(',') !== -1;
+        const hasDot = s.indexOf('.') !== -1;
+        if (hasComma && !hasDot) {
+            s = s.replace(',', '.');
+        } else if (hasComma && hasDot) {
+            // assume dots are thousands sep, commas decimal
+            // e.g. 1.234,56 -> 1234.56
+            s = s.replace(/\./g, '').replace(/,/g, '.');
+        }
+
+        // Allow leading + or -
+        if (!/^[+-]?\d+(?:\.\d+)?$/.test(s)) return null;
+        return s;
+    }
+
+    function handlePaste(evt) {
+        const target = evt.target;
+        if (target) {
+            const tagName = target.tagName;
+            const isFormField = tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT';
+            const inSheet = typeof target.closest === 'function' &&
+                (target.closest('[data-calc-sheet]') || target.closest('[data-calc-sheet-toolbar]'));
+            if (isFormField || target.isContentEditable || inSheet) return;
+        }
+        if (!isCalculatorFocused()) return;
+
+        const clipboardText = (evt.clipboardData && evt.clipboardData.getData) ? evt.clipboardData.getData('text') : (window.clipboardData ? window.clipboardData.getData('Text') : '');
+        const normalized = parseClipboardNumber(clipboardText);
+        if (!normalized) return;
+        evt.preventDefault();
+
+        let num = normalized;
+        let neg = false;
+        if (num.startsWith('+') || num.startsWith('-')) {
+            if (num.startsWith('-')) neg = true;
+            num = num.slice(1);
+        }
+
+        for (const ch of num) {
+            if (ch === '.') {
+                handleInput('.');
+            } else if (ch >= '0' && ch <= '9') {
+                handleInput(ch);
+            }
+        }
+
+        if (neg) handleInput('±');
+    }
+
+    document.addEventListener('paste', handlePaste);
     } catch (err) {
         console.error("Main initialization error:", err);
     }
