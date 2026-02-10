@@ -622,15 +622,15 @@ button[data-key="CNT"]::after {
     width: 10px;
 }
 .paper-tape::-webkit-scrollbar-track {
-    background: rgba(0,0,0,0.05); 
+    background: var(--scrollbar-track-bg, rgba(0,0,0,0.05));
     border-radius: 4px;
 }
 .paper-tape::-webkit-scrollbar-thumb {
-    background: rgba(0,0,0,0.2); 
+    background: var(--scrollbar-thumb-bg, rgba(0,0,0,0.2)); 
     border-radius: 4px;
 }
 .paper-tape::-webkit-scrollbar-thumb:hover {
-    background: rgba(0,0,0,0.3); 
+    background: var(--scrollbar-thumb-hover-bg, rgba(0,0,0,0.3));
 }
 
 /* Fix per allineamento in basso che non rompe lo scroll: 
@@ -651,7 +651,7 @@ button[data-key="CNT"]::after {
 }
 
 .tape-symbol {
-    color: #444; /* Standard nero/grigio */
+    color: var(--tape-symbol-color, #444);
     font-weight: 700;
     min-width: 25px; /* Spazio fisso per il simbolo */
     text-align: right;
@@ -682,7 +682,7 @@ button[data-key="CNT"]::after {
 
 .tape-percent {
     margin-left: 6px;
-    color: #9a9a9a;
+    color: var(--tape-percent-color, #9a9a9a);
     font-weight: 600;
     font-size: 0.85em;
 }
@@ -698,7 +698,7 @@ button[data-key="CNT"]::after {
 /* Colore Rosso per Negativi (simbolo e valore) */
 .tape-row.negative .tape-val,
 .tape-row.negative .tape-symbol {
-    color: #cc0000;
+    color: var(--tape-negative-color, #cc0000);
 }
 
 /* Editable tape entries */
@@ -730,7 +730,7 @@ button[data-key="CNT"]::after {
 }
 .tape-row.result-row .tape-symbol {
     font-size: 0.8em; /* Simbolo più evidente */
-    color: #444;
+    color: var(--tape-result-text, #444);
 }
 
 .tape-row.result-row .tape-symbol.tape-symbol-small {
@@ -744,7 +744,7 @@ button[data-key="CNT"]::after {
     width: 100%;
     padding: 0;
     flex-shrink: 0;
-    background: #272f47;
+    background: var(--history-container-bg, #272f47);
     border-radius: 6px;
     grid-column: 1 / -1;
     gap: 6px;
