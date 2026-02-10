@@ -4,6 +4,7 @@
 :root,
 [data-theme="dark"] {
   color-scheme: dark;
+  /* Main UI */
   --bg: #1a1e24;
   --bg-gradient: radial-gradient(circle at top left, #4c5f82, #273852 80%);
   --panel: #232833;
@@ -19,11 +20,44 @@
   --flip-text: #dfe7f0;
   --day-today-bg: rgba(122, 166, 194, 0.2);
   --day-today-text: #eaf2f7;
+  
+  /* Calculator-specific */
+  --calc-bg: #556887;
+  --calc-panel: #333333;
+  --calc-border: #343e4e;
+  --vfd-bg: #0d1110;
+  --vfd-bg-off: #070a0a;
+  --vfd-text: #00ffaa;
+  --vfd-text-dim: rgba(0, 255, 170, 0.7);
+  --vfd-accent: rgba(0, 255, 170, 0.5);
+  --vfd-status-off: #004433;
+  --key-bg-default: #e6e4d5;
+  --key-bg-numeric: #383e45;
+  --key-bg-cyan: #5f8a9e;
+  --key-bg-green: #5d7a72;
+  --key-bg-light-green: #8da39f;
+  --key-bg-gray: #4a4a4a;
+  --key-bg-gray-thumb: #b0b0b0;
+  --key-text-light: #e6e4d5;
+  --key-text-dark: #111;
+  --key-text-cyan: #89cff0;
+  --key-minus-color: #b74040;
+  --led-off: #300;
+  --led-on: #ff3300;
+  --led-glow: rgba(255, 50, 0, 0.8);
+  --switch-track: #222;
+  --switch-thumb: #e0e0dc;
+  --switch-label: #888;
+  --switch-ticks: #bbb;
+  --paper-bg: #556887;
+  --paper-tape-bg: #fdfae7;
+  --paper-ink: #2a2a2a;
 }
 
 /* === Light theme === */
 [data-theme="light"] {
   color-scheme: light;
+  /* Main UI */
   --bg: #e8ecf0;
   --bg-gradient: linear-gradient(135deg, #dce3ea, #f0f2f5 80%);
   --panel: #ffffff;
@@ -38,11 +72,44 @@
   --flip-text: #1a1e24;
   --day-today-bg: rgba(58, 125, 184, 0.15);
   --day-today-text: #1a3050;
+  
+  /* Calculator-specific */
+  --calc-bg: #d0dde8;
+  --calc-panel: #e8ecf0;
+  --calc-border: #b8c5d6;
+  --vfd-bg: #f5f5f0;
+  --vfd-bg-off: #e8e8e0;
+  --vfd-text: #006633;
+  --vfd-text-dim: rgba(0, 102, 51, 0.7);
+  --vfd-accent: rgba(0, 102, 51, 0.4);
+  --vfd-status-off: #ccccaa;
+  --key-bg-default: #e6e4d5;
+  --key-bg-numeric: #606868;
+  --key-bg-cyan: #7da8b8;
+  --key-bg-green: #808080;
+  --key-bg-light-green: #a8a8a8;
+  --key-bg-gray: #b8b8b8;
+  --key-bg-gray-thumb: #e8e8e8;
+  --key-text-light: #f0f0f0;
+  --key-text-dark: #333;
+  --key-text-cyan: #d8f0ff;
+  --key-minus-color: #cc0000;
+  --led-off: #cc9999;
+  --led-on: #ff6600;
+  --led-glow: rgba(255, 102, 0, 0.8);
+  --switch-track: #cccccc;
+  --switch-thumb: #555555;
+  --switch-label: #666;
+  --switch-ticks: #666;
+  --paper-bg: #d0dde8;
+  --paper-tape-bg: #f5f5f0;
+  --paper-ink: #333333;
 }
 
 /* === AMOLED theme === */
 [data-theme="amoled"] {
   color-scheme: dark;
+  /* Main UI */
   --bg: #000000;
   --bg-gradient: none;
   --panel: #0a0a0a;
@@ -57,6 +124,146 @@
   --flip-text: #e0e0e0;
   --day-today-bg: rgba(79, 195, 247, 0.2);
   --day-today-text: #b3e5fc;
+  
+  /* Calculator-specific */
+  --calc-bg: #000;
+  --calc-panel: #0a0a0a;
+  --calc-border: #1a1a1a;
+  --vfd-bg: #000;
+  --vfd-bg-off: #000;
+  --vfd-text: #00ffaa;
+  --vfd-text-dim: rgba(0, 255, 170, 0.7);
+  --vfd-accent: rgba(0, 255, 170, 0.5);
+  --vfd-status-off: #003300;
+  --key-bg-default: #1a1a1a;
+  --key-bg-numeric: #222;
+  --key-bg-cyan: #1a3a4a;
+  --key-bg-green: #1a2a22;
+  --key-bg-light-green: #2a3a32;
+  --key-bg-gray: #2a2a2a;
+  --key-bg-gray-thumb: #555;
+  --key-text-light: #e0e0e0;
+  --key-text-dark: #000;
+  --key-text-cyan: #88ddff;
+  --key-minus-color: #ff6666;
+  --led-off: #200;
+  --led-on: #ff3300;
+  --led-glow: rgba(255, 50, 0, 0.8);
+  --switch-track: #0a0a0a;
+  --switch-thumb: #333;
+  --switch-label: #666;
+  --switch-ticks: #666;
+  --paper-bg: #000;
+  --paper-tape-bg: #0a0a0a;
+  --paper-ink: #e0e0e0;
+}
+
+/* === Mac 1990 theme: Minimalist pixelated aesthetic === */
+@import url("https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap");
+
+[data-theme="mac1990"] {
+  color-scheme: light;
+  /* Main UI: Silver/Gray palette with subtle gradients */
+  --bg: #e0e0e0;
+  --bg-gradient: linear-gradient(180deg, #e8e8e8 0%, #d8d8d8 100%);
+  --panel: #e8e8e8;
+  --panel-gradient: linear-gradient(180deg, #f0f0f0 0%, #e0e0e0 100%);
+  --panel-soft: #dcdcdc;
+  --text: #222222;
+  --muted: #666666;
+  --accent: #0066cc;
+  --accent-2: #00aa00;
+  --shadow: rgba(0, 0, 0, 0.15);
+  --radius: 4px;
+  --flip-bg: linear-gradient(180deg, #e8e8e8 0%, #d8d8d8 100%);
+  --flip-text: #222;
+  --day-today-bg: rgba(0, 102, 204, 0.12);
+  --day-today-text: #004488;
+  
+  /* Calculator-specific: Minimal pixelated style */
+  --calc-bg: #c0c0c0;
+  --calc-panel: #dfdfdf;
+  --calc-border: #808080;
+  --vfd-bg: #c0c0c0;
+  --vfd-bg-off: #b8b8b8;
+  --vfd-text: #004488;
+  --vfd-text-dim: rgba(0, 68, 136, 0.6);
+  --vfd-accent: rgba(0, 68, 136, 0.3);
+  --vfd-status-off: #888888;
+  --key-bg-default: #dfdfdf;
+  --key-bg-numeric: #c0c0c0;
+  --key-bg-cyan: #a8a8a8;
+  --key-bg-green: #a8a8a8;
+  --key-bg-light-green: #b8b8b8;
+  --key-bg-gray: #dfdfdf;
+  --key-bg-gray-thumb: #c0c0c0;
+  --key-text-light: #dfdfdf;
+  --key-text-dark: #222;
+  --key-text-cyan: #004488;
+  --key-minus-color: #880000;
+  --led-off: #cccccc;
+  --led-on: #ff6600;
+  --led-glow: rgba(255, 102, 0, 0.6);
+  --switch-track: #c0c0c0;
+  --switch-thumb: #808080;
+  --switch-label: #333;
+  --switch-ticks: #555;
+  --paper-bg: #c0c0c0;
+  --paper-tape-bg: #f5f5f0;
+  --paper-ink: #222;
+}
+
+/* === NeXTSTEP theme: Charcoal, clean lines, bold accents === */
+[data-theme="nextstep"] {
+  color-scheme: dark;
+  /* Main UI: Dark Charcoal with sharp contrast */
+  --bg: #2a2a2a;
+  --bg-gradient: none;
+  --panel: #3a3a3a;
+  --panel-gradient: none;
+  --panel-soft: #4a4a4a;
+  --text: #ffffff;
+  --muted: #aaaaaa;
+  --accent: #ffaa00;
+  --accent-2: #00cc99;
+  --shadow: rgba(0, 0, 0, 0.5);
+  --radius: 0px;
+  --flip-bg: none;
+  --flip-text: #ffffff;
+  --day-today-bg: rgba(255, 170, 0, 0.15);
+  --day-today-text: #ffdd88;
+  
+  /* Calculator-specific: NeXTSTEP aesthetic */
+  --calc-bg: #4a4a4a;
+  --calc-panel: #3a3a3a;
+  --calc-border: #000000;
+  --vfd-bg: #1a1a1a;
+  --vfd-bg-off: #0a0a0a;
+  --vfd-text: #ffaa00;
+  --vfd-text-dim: rgba(255, 170, 0, 0.7);
+  --vfd-accent: rgba(255, 170, 0, 0.5);
+  --vfd-status-off: #666666;
+  --key-bg-default: #555555;
+  --key-bg-numeric: #2a2a2a;
+  --key-bg-cyan: #1a3a4a;
+  --key-bg-green: #1a2a1a;
+  --key-bg-light-green: #2a3a2a;
+  --key-bg-gray: #4a4a4a;
+  --key-bg-gray-thumb: #888;
+  --key-text-light: #ffffff;
+  --key-text-dark: #000;
+  --key-text-cyan: #99ddff;
+  --key-minus-color: #ff5555;
+  --led-off: #333;
+  --led-on: #ffaa00;
+  --led-glow: rgba(255, 170, 0, 0.8);
+  --switch-track: #1a1a1a;
+  --switch-thumb: #666;
+  --switch-label: #aaa;
+  --switch-ticks: #aaa;
+  --paper-bg: #4a4a4a;
+  --paper-tape-bg: #2a2a2a;
+  --paper-ink: #ffaa00;
 }
 
 * {

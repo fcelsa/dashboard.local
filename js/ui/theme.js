@@ -15,6 +15,8 @@ export const THEMES = {
   dark: 'Dark',
   light: 'Light',
   amoled: 'AMOLED',
+  mac1990: 'Mac1990',
+  nextstep: 'NeXTSTEP',
 };
 
 const themeIds = Object.keys(THEMES);
