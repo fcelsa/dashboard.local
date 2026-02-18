@@ -58,6 +58,33 @@ export function restoreTheme() {
 }
 
 /**
+ * Bind a select element to change themes.
+ * @param {HTMLSelectElement} select
+ */
+export function bindThemeSelect(select) {
+  if (!select) return;
+
+  const updateSelect = () => {
+    select.value = getTheme();
+  };
+
+  updateSelect();
+
+  select.addEventListener('change', () => {
+    setTheme(select.value);
+  });
+
+  // Watch for external theme changes (if any)
+  const observer = new MutationObserver(() => {
+    updateSelect();
+  });
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-theme'],
+  });
+}
+
+/**
  * Bind a button to cycle themes on click.
  * Updates the button label to show the current theme name.
  * @param {HTMLElement} btn

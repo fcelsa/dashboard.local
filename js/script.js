@@ -6,6 +6,7 @@ import {
   setCalendarView,
   getCalendarView,
 } from './ui/calendar-views.js';
+import { getTheme } from './ui/theme.js';
 
 const monthsContainer = document.getElementById("months");
 const flipClock = document.getElementById("flip-clock");
@@ -20,12 +21,10 @@ const fxChartEl = document.getElementById("fx-chart");
 const fxMiniChartEl = document.getElementById("fx-mini-chart");
 const fxStatusEl = document.getElementById("fx-status");
 const fxCardEl = document.querySelector(".fx-card");
-const settingsToggleBtn = document.getElementById("settings-toggle");
-const settingsPanelEl = document.getElementById("settings-panel");
-const calculatorPanelEl = document.getElementById("calculator-panel");
 const fxKeyForm = document.getElementById("fx-key-form");
 const fxKeyInput = document.getElementById("freecurrency-key");
 const fxKeyStatus = document.getElementById("fx-key-status");
+const fxIndicator = document.getElementById("fx-api-status");
 const fxKeyClearBtn = document.getElementById("clear-freecurrency-key");
 const gistKeyForm = document.getElementById("gist-key-form");
 const gistKeyInput = document.getElementById("gist-token");
@@ -498,12 +497,16 @@ function maskApiKey(key) {
 }
 
 function updateFxKeyStatus() {
-  if (!fxKeyStatus) return;
   const stored = getFreeCurrencyCookieKey();
-  if (stored) {
-    fxKeyStatus.textContent = `Chiave salvata: ${maskApiKey(stored)}`;
-  } else {
-    fxKeyStatus.textContent = "Nessuna chiave salvata.";
+  if (fxKeyStatus) {
+    if (stored) {
+      fxKeyStatus.textContent = `Chiave salvata: ${maskApiKey(stored)}`;
+    } else {
+      fxKeyStatus.textContent = "Nessuna chiave salvata.";
+    }
+  }
+  if (fxIndicator) {
+    fxIndicator.classList.toggle("active", !!stored);
   }
 }
 
@@ -887,6 +890,22 @@ function drawFxChart() {
   const ctx = fxChartEl.getContext("2d");
   if (!ctx) return;
 
+  // Determine if current theme is light or dark
+  const currentTheme = getTheme();
+  const isLight = currentTheme === 'light' || currentTheme === 'mac1990';
+
+  // Define colors based on theme type
+  const colors = {
+    grid: isLight ? 'rgba(0, 50, 100, 0.08)' : 'rgba(122, 166, 194, 0.12)',
+    line: isLight ? '#3a7db8' : '#7aa6c2',
+    hoverLine: isLight ? 'rgba(58, 125, 184, 0.3)' : 'rgba(155, 179, 168, 0.5)',
+    indicator: isLight ? '#2a69a3' : '#7aa6c2',
+    tooltipBg: isLight ? 'rgba(255, 255, 255, 0.95)' : 'rgba(16, 25, 32, 0.9)',
+    tooltipBorder: isLight ? 'rgba(58, 125, 184, 0.4)' : 'rgba(122, 166, 194, 0.6)',
+    tooltipText: isLight ? '#1a3050' : '#e7f0f6',
+    avgLine: isLight ? 'rgba(78, 138, 114, 0.6)' : 'rgba(155, 179, 168, 0.75)'
+  };
+
   const ratio = window.devicePixelRatio || 1;
   const width = fxChartEl.width;
   const height = fxChartEl.height;
@@ -916,7 +935,7 @@ function drawFxChart() {
   const scaleY = chartHeight / (max - min || 1);
 
   const gridSteps = 6;
-  ctx.strokeStyle = "rgba(122, 166, 194, 0.12)";
+  ctx.strokeStyle = colors.grid;
   ctx.lineWidth = 1 * ratio;
   for (let i = 0; i <= gridSteps; i += 1) {
     const y = padding + (chartHeight / gridSteps) * i;
@@ -933,7 +952,7 @@ function drawFxChart() {
     ctx.stroke();
   }
 
-  ctx.strokeStyle = "#7aa6c2";
+  ctx.strokeStyle = colors.line;
   ctx.lineWidth = 2 * ratio;
   ctx.beginPath();
   entries.forEach((entry, index) => {
@@ -952,14 +971,14 @@ function drawFxChart() {
     const x = padding + fxHoverIndex * scaleX;
     const y = height - padding - (entry.rate - min) * scaleY;
 
-    ctx.strokeStyle = "rgba(155, 179, 168, 0.5)";
+    ctx.strokeStyle = colors.hoverLine;
     ctx.lineWidth = 1 * ratio;
     ctx.beginPath();
     ctx.moveTo(x, padding);
     ctx.lineTo(x, height - padding);
     ctx.stroke();
 
-    ctx.fillStyle = "#7aa6c2";
+    ctx.fillStyle = colors.indicator;
     ctx.beginPath();
     ctx.arc(x, y, 3.5 * ratio, 0, Math.PI * 2);
     ctx.fill();
@@ -976,15 +995,15 @@ function drawFxChart() {
     boxX = Math.max(padding, Math.min(boxX, width - padding - boxWidth));
     const boxY = Math.max(padding, y - boxHeight - 10 * ratio);
 
-    ctx.fillStyle = "rgba(16, 25, 32, 0.9)";
-    ctx.strokeStyle = "rgba(122, 166, 194, 0.6)";
+    ctx.fillStyle = colors.tooltipBg;
+    ctx.strokeStyle = colors.tooltipBorder;
     ctx.lineWidth = 1 * ratio;
     ctx.beginPath();
     ctx.rect(boxX, boxY, boxWidth, boxHeight);
     ctx.fill();
     ctx.stroke();
 
-    ctx.fillStyle = "#e7f0f6";
+    ctx.fillStyle = colors.tooltipText;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(tooltipText, boxX + boxWidth / 2, boxY + boxHeight / 2 + 0.5 * ratio);
@@ -993,7 +1012,7 @@ function drawFxChart() {
   const avg = rates.reduce((sum, value) => sum + value, 0) / rates.length;
   const avgY = height - padding - (avg - min) * scaleY;
   ctx.setLineDash([6 * ratio, 6 * ratio]);
-  ctx.strokeStyle = "rgba(155, 179, 168, 0.75)";
+  ctx.strokeStyle = colors.avgLine;
   ctx.lineWidth = 1.5 * ratio;
   ctx.beginPath();
   ctx.moveTo(padding, avgY);
@@ -1233,22 +1252,6 @@ function initDashboard() {
       const isAnalog = clockWrap.classList.contains("is-analog");
       flipClock.setAttribute("aria-hidden", isAnalog ? "true" : "false");
       analogClock.setAttribute("aria-hidden", isAnalog ? "false" : "true");
-    });
-  }
-
-  if (settingsToggleBtn) {
-    settingsToggleBtn.addEventListener("click", () => {
-      const isOpen = document.body.classList.toggle("show-settings");
-      if (settingsPanelEl) {
-        settingsPanelEl.setAttribute("aria-hidden", isOpen ? "false" : "true");
-      }
-      if (calculatorPanelEl) {
-        calculatorPanelEl.setAttribute("aria-hidden", isOpen ? "true" : "false");
-      }
-      settingsToggleBtn.setAttribute(
-        "aria-label",
-        isOpen ? "Chiudi impostazioni" : "Apri impostazioni"
-      );
     });
   }
 
