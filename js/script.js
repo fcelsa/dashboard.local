@@ -1,5 +1,6 @@
 import { getCookie, setCookie, deleteCookie } from './utils/cookies.js';
 import { renderMoonPhase } from './moon.js';
+import { isHoliday } from './time-date-manager.js';
 import {
   registerCalendarView,
   initCalendarViews,
@@ -206,6 +207,23 @@ function buildMonthCard(date) {
       } else {
         cell.textContent = dayDate.getDate();
         cell.dataset.date = formatDateLocal(dayDate);
+
+        // Holiday Check
+        const holiday = isHoliday(dayDate);
+        if (holiday) {
+          if (holiday.type === 'official') {
+            cell.classList.add("holiday-day");
+          } else {
+            cell.classList.add("user-event-day");
+          }
+          cell.title = holiday.name;
+        }
+
+        // Sunday Check
+        if (dayDate.getDay() === 0) {
+          cell.classList.add("sunday-red");
+        }
+
         cell.addEventListener("contextmenu", (event) => {
           event.preventDefault();
           calendarMenuDate = new Date(dayDate.getTime());

@@ -12,6 +12,7 @@ import { initTabs } from './ui/tabs.js';
 // Side-effect imports: each module self-initialises on import
 import './calculator.js';
 import './calc-sheet.js';
+import './time-date-manager.js';
 
 // --- Theme ---
 restoreTheme();

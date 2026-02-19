@@ -7,8 +7,7 @@
   <title>Dashboard</title>
   <link rel="stylesheet" href="css/styles.css" />
   <link rel="stylesheet" href="css/calculator.css" />
-  <link rel="stylesheet" href="css/calc-sheet.css" />
-</head>
+  <link rel="stylesheet" href="css/calc-sheet.css" />  <link rel="stylesheet" href="css/time-date.css"></head>
 
 <body>
   <div class="app">
@@ -365,11 +364,51 @@
 
           <section class="tab-panel" data-tab-panel="time-date">
             <div class="panel-header small">
-              <h2>Time & Date Calc</h2>
-              <p class="hint">Strumenti per calcoli temporali (in preparazione).</p>
+              <h2>Time & Date</h2>
+              <p class="hint">Calcolo differenze temporali e gestione festività.</p>
             </div>
-            <div class="tab-placeholder">
-              <p>Spazio riservato ai calcoli su date e orari.</p>
+            
+            <div class="time-date-grid">
+              <!-- Calcolatore Differenza -->
+              <div class="time-date-section calculator-card">
+                <h3>Calcolo Differenza</h3>
+                <div class="time-input-group">
+                  <div class="field">
+                    <label for="date-start">Inizio</label>
+                    <input type="text" id="date-start" class="time-input" placeholder="GG/MM/AAAA o AAAA/MM/GG HH:MM" spellcheck="false" autocomplete="off">
+                  </div>
+                  <div class="field">
+                    <label for="date-end">Fine</label>
+                    <input type="text" id="date-end" class="time-input" placeholder="GG/MM/AAAA o HH:MM" spellcheck="false" autocomplete="off">
+                  </div>
+                </div>
+                <div class="time-result-area">
+                  <span class="label">Risultato:</span>
+                  <div id="date-diff-result" class="result-value">Inserire le date</div>
+                </div>
+              </div>
+
+              <!-- Lista Festività -->
+              <div class="time-date-section holidays-card">
+                <h3>Festività Italiane ed Eventi</h3>
+                <div class="table-container">
+                  <table class="holidays-table">
+                    <thead>
+                      <tr>
+                        <th>Data</th>
+                        <th>Nome Festività</th>
+                        <th>Note</th>
+                      </tr>
+                    </thead>
+                    <tbody id="holidays-body">
+                      <!-- Popolato via JS -->
+                    </tbody>
+                  </table>
+                </div>
+                <div class="holidays-legend">
+                  <p class="hint">* Le feste in corsivo sono calcolate annualmente (es. Pasqua).</p>
+                </div>
+              </div>
             </div>
           </section>
 
