@@ -1,13 +1,10 @@
 # Notes and bug to see later
 
-
 ## General to do
-- Theming system
 - Language and Country support (i18n - i10n)
 
 
 ## Calendar
-- Holidays and other date highlighting support via settings card. See also Tab Panel.
 
 
 ## FX-Card
@@ -15,20 +12,11 @@
 
 
 ## Status card
-- To be define his function
 
 
 ## Tab panel
-- Time & Date Tab already present, to be defined
 - Utility Tab already present, to be defined
 - Implement free form notepad tab with color and settings like calc-sheet
-- Implement Calendar tab settings, with holidays date list, locale settings and so on
----
-**Embedding Google Sheets in tabs**
-- Possibility to embed portions of a Google Sheet via iframe (native UI, only if public/shared).
-- Possibility to view/edit data via Google Sheets API (custom interface only, not direct editing like Google Sheets UI).
-- To be explored: which solution to adopt for integrated editing and visualization.
----
 
 
 ## Calculator Tab
@@ -40,4 +28,4 @@
 
 
 ## Calc-sheet Tab
-
+- Improve color theme 

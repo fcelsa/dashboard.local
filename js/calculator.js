@@ -11,7 +11,8 @@ import {
   getAllUserSnapshots,
   getUserSnapshot,
   deleteUserSnapshot,
-  getUserSnapshotCount
+  getUserSnapshotCount,
+  clearAllHistory
 } from './utils/calc-history-db.js';
 import {
   getGistToken,
@@ -1229,12 +1230,21 @@ document.addEventListener("DOMContentLoaded", async () => {
     // --- SAVE/LOAD USER SNAPSHOTS ---
     const calcSaveBtn = document.getElementById("calc-save-btn");
     const calcLoadBtn = document.getElementById("calc-load-btn");
+    const calcClearHistoryBtn = document.getElementById("calc-clear-history-btn");
     
     if (calcSaveBtn) {
         calcSaveBtn.addEventListener("click", showSaveDialog);
     }
     if (calcLoadBtn) {
         calcLoadBtn.addEventListener("click", showLoadDialog);
+    }
+    if (calcClearHistoryBtn) {
+        calcClearHistoryBtn.addEventListener("click", async () => {
+            if (confirm("Sei sicuro di voler svuotare la cronologia delle sessioni?")) {
+                await clearAllHistory();
+                await renderHistoryIcons();
+            }
+        });
     }
 
     /**

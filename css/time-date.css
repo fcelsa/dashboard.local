@@ -156,3 +156,26 @@
 .user-event-day {
   cursor: help;
 }
+
+/* --- Calendar Navigation & Highlight --- */
+.month-card.current-month {
+  box-shadow: inset 0 0 0 1px var(--accent) !important;
+}
+
+.calendar-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.nav-indicator {
+  min-height: 14px;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--accent);
+  font-weight: bold;
+  user-select: none;
+}
+
+

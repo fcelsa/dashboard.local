@@ -659,10 +659,10 @@ function initCalcSheet() {
   }
 
   function colorToValue(color) {
-    if (color === "blue") return "#1f4aa8";
-    if (color === "red") return "#b7261d";
-    if (color === "green") return "#0b7a3a";
-    return "#2d2a20";
+    if (color === "blue") return "var(--sheet-text-blue, #1f4aa8)";
+    if (color === "red") return "var(--sheet-text-red, #b7261d)";
+    if (color === "green") return "var(--sheet-text-green, #0b7a3a)";
+    return "var(--sheet-text)";
   }
 
   function applyCellStyle(cell, entry) {

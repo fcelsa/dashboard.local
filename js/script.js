@@ -140,8 +140,14 @@ function buildMonthCard(date) {
   title.className = "month-title";
   const name = document.createElement("span");
   name.textContent = `${monthNames[month]} ${year}`;
+  
+  const isCurrentMonth = getMonthKey(date) === todayKey;
+  if (isCurrentMonth) {
+    card.classList.add("current-month");
+  }
+
   const indicator = document.createElement("span");
-  indicator.textContent = getMonthKey(date) === todayKey ? "•" : "";
+  indicator.textContent = isCurrentMonth ? "•" : "";
   title.append(name, indicator);
 
   const weekdays = document.createElement("div");
@@ -267,6 +273,21 @@ function renderMonths() {
     const date = new Date(currentYear, targetMonthIndex, 1);
 
     monthsContainer.appendChild(buildMonthCard(date));
+  }
+
+  // Update navigation indicator
+  const navIndicator = document.getElementById("calendar-nav-indicator");
+  if (navIndicator) {
+    if (startOffset > 0) {
+      navIndicator.textContent = "↑";
+      navIndicator.title = "Oggi è nel passato";
+    } else if (startOffset < -(visibleMonths - 1)) {
+      navIndicator.textContent = "↓";
+      navIndicator.title = "Oggi è nel futuro";
+    } else {
+      navIndicator.textContent = "";
+      navIndicator.title = "";
+    }
   }
 }
 
@@ -1232,6 +1253,11 @@ function initDashboard() {
 
   // Register a compact year overview
   registerCalendarView('year', ' ⊞ ', (container) => {
+    const navIndicator = document.getElementById("calendar-nav-indicator");
+    if (navIndicator) {
+      navIndicator.textContent = "";
+      navIndicator.title = "";
+    }
     renderYearOverview(container);
   });
 
