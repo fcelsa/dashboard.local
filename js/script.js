@@ -75,6 +75,7 @@ const weekdayNames = [
   "Sabato",
 ];
 
+let currentOverviewYear = new Date().getFullYear();
 let startOffset = -1;
 const visibleMonths = 6;
 let isScrolling = false;
@@ -91,6 +92,16 @@ calendarContextMenu.innerHTML = `
   <button type="button" data-calendar-action="settings">Impostazioni</button>
 `;
 document.body.appendChild(calendarContextMenu);
+
+// --- DATE FORMAT CONTEXT MENU ---
+const dateFormatMenu = document.createElement("div");
+dateFormatMenu.className = "date-format-menu";
+dateFormatMenu.innerHTML = `
+  <button type="button" data-format="full">Domenica 22 Febbraio 2026</button>
+  <button type="button" data-format="iso">2026-02-22</button>
+  <button type="button" data-format="short">22/02/2026</button>
+`;
+document.body.appendChild(dateFormatMenu);
 
 // --- CALENDARIO ---
 function getMonthKey(date) {
@@ -280,13 +291,13 @@ function renderMonths() {
   if (navIndicator) {
     if (startOffset > 0) {
       navIndicator.textContent = "↑";
-      navIndicator.title = "Oggi è nel passato";
+      navIndicator.title = "Oggi è prima delle date visualizzate";
     } else if (startOffset < -(visibleMonths - 1)) {
       navIndicator.textContent = "↓";
-      navIndicator.title = "Oggi è nel futuro";
+      navIndicator.title = "Oggi è dopo le date visualizzate";
     } else {
-      navIndicator.textContent = "";
-      navIndicator.title = "";
+      navIndicator.textContent = "•";
+      navIndicator.title = "Oggi è tra le date visualizzate";
     }
   }
 }
@@ -299,34 +310,69 @@ function renderMonths() {
 function renderYearOverview(container) {
   container.innerHTML = "";
   const now = new Date();
-  const year = now.getFullYear();
+  const year = currentOverviewYear;
 
   const yearWrap = document.createElement("div");
   yearWrap.className = "year-overview";
 
   const yearTitle = document.createElement("div");
   yearTitle.className = "year-title";
-  yearTitle.textContent = String(year);
+
+  const prevBtn = document.createElement("button");
+  prevBtn.className = "year-nav-btn";
+  prevBtn.textContent = "‹";
+  prevBtn.onclick = () => {
+    currentOverviewYear--;
+    renderYearOverview(container);
+  };
+
+  const nextBtn = document.createElement("button");
+  nextBtn.className = "year-nav-btn";
+  nextBtn.textContent = "›";
+  nextBtn.onclick = () => {
+    currentOverviewYear++;
+    renderYearOverview(container);
+  };
+
+  const yearLabel = document.createElement("span");
+  yearLabel.className = "year-label-text";
+  yearLabel.textContent = year + " - " + (year + 1);
+  yearLabel.onclick = () => {
+    currentOverviewYear = now.getFullYear();
+    renderYearOverview(container);
+  };
+
+  yearTitle.appendChild(prevBtn);
+  yearTitle.appendChild(yearLabel);
+  yearTitle.appendChild(nextBtn);
   yearWrap.appendChild(yearTitle);
 
   const grid = document.createElement("div");
   grid.className = "year-grid";
 
-  for (let m = 0; m < 12; m++) {
+  // Render 24 months (2 full years) starting from currentOverviewYear
+  for (let m = 0; m < 24; m++) {
+    const currentYear = year + Math.floor(m / 12);
+    const monthIndex = m % 12;
+
     const mini = document.createElement("div");
     mini.className = "year-month-mini";
 
     const label = document.createElement("div");
     label.className = "year-month-label";
-    label.textContent = monthNames[m].substring(0, 3);
-    if (m === now.getMonth()) label.classList.add("current");
+    // Show month name and year if it's the second year
+    label.textContent = monthNames[monthIndex].substring(0, 3) + " " + currentYear;
+    
+    if (monthIndex === now.getMonth() && currentYear === now.getFullYear()) {
+      label.classList.add("current");
+    }
     mini.appendChild(label);
 
     const daysWrap = document.createElement("div");
     daysWrap.className = "year-days";
 
-    const firstDay = new Date(year, m, 1);
-    const lastDay = new Date(year, m + 1, 0);
+    const firstDay = new Date(currentYear, monthIndex, 1);
+    const lastDay = new Date(currentYear, monthIndex + 1, 0);
     const startDow = (firstDay.getDay() + 6) % 7; // Mon=0
 
     // Empty cells for offset
@@ -340,10 +386,11 @@ function renderYearOverview(container) {
       const dayEl = document.createElement("span");
       dayEl.className = "year-day";
       dayEl.textContent = d;
-      const dayDate = new Date(year, m, d);
-      const dow = dayDate.getDay();
+      
+      const dow = new Date(currentYear, monthIndex, d).getDay();
       if (dow === 0 || dow === 6) dayEl.classList.add("weekend");
-      if (d === now.getDate() && m === now.getMonth() && year === now.getFullYear()) {
+      
+      if (d === now.getDate() && monthIndex === now.getMonth() && currentYear === now.getFullYear()) {
         dayEl.classList.add("today");
       }
       daysWrap.appendChild(dayEl);
@@ -388,6 +435,7 @@ function scheduleMidnightRefresh() {
   setTimeout(() => {
     renderMonths();
     renderMoonPhase();
+    updateDateDisplay();
     scheduleMidnightRefresh();
   }, timeout);
 }
@@ -411,6 +459,42 @@ function scheduleFxHistoryRefresh() {
     fetchFxHistory();
     scheduleFxHistoryRefresh();
   }, timeout);
+}
+
+/**
+ * Format a date object according to the specified format
+ * @param {Date} date
+ * @param {string} format - 'full', 'iso', or 'short'
+ * @returns {string}
+ */
+function formatDate(date, format) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const monthName = monthNames[date.getMonth()];
+  const dayName = weekdayNames[date.getDay()];
+
+  switch (format) {
+    case "full":
+      return `${dayName}\n${day} ${monthName} ${year}`;
+    case "iso":
+      return `${year}-${month}-${day}`;
+    case "short":
+      return `${day}/${month}/${year}`;
+    default:
+      return `${dayName}\n${day} ${monthName}`;
+  }
+}
+
+/**
+ * Update the date display in the time-panel
+ */
+function updateDateDisplay() {
+  const dateDisplayEl = document.querySelector(".date-display-text");
+  if (dateDisplayEl) {
+    const now = new Date();
+    dateDisplayEl.textContent = formatDate(now, "full");
+  }
 }
 
 function updateClock() {
@@ -468,10 +552,6 @@ function scheduleMinuteRefresh() {
     updateClock();
     scheduleMinuteRefresh();
   }, timeout);
-}
-
-function formatDate(date) {
-  return date.toISOString().slice(0, 10);
 }
 
 function formatDateLocal(date) {
@@ -1289,6 +1369,69 @@ function initDashboard() {
       document.body.classList.toggle("show-trading");
     });
   }
+
+  // --- Date Display & Format Menu ---
+  const dateDisplayEl = document.getElementById("date-display");
+  if (dateDisplayEl) {
+    // Update date display on page load and at midnight
+    updateDateDisplay();
+
+    // Right-click to show date format menu
+    dateDisplayEl.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      const now = new Date();
+      
+      // Update menu button texts with current date
+      const fullButton = dateFormatMenu.querySelector('[data-format="full"]');
+      const isoButton = dateFormatMenu.querySelector('[data-format="iso"]');
+      const shortButton = dateFormatMenu.querySelector('[data-format="short"]');
+      
+      if (fullButton) fullButton.textContent = formatDate(now, "full").replace(/\n/g, " ");
+      if (isoButton) isoButton.textContent = formatDate(now, "iso");
+      if (shortButton) shortButton.textContent = formatDate(now, "short");
+      
+      const rect = dateDisplayEl.getBoundingClientRect();
+      dateFormatMenu.style.left = `${rect.left}px`;
+      dateFormatMenu.style.top = `${rect.bottom + 8}px`;
+      dateFormatMenu.classList.add("is-visible");
+    });
+  }
+
+  // Date format menu button click handlers
+  dateFormatMenu.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-format]");
+    if (!button) return;
+
+    const format = button.getAttribute("data-format");
+    const now = new Date();
+    let formattedDate = formatDate(now, format);
+
+    // For "full" format in clipboard, remove newlines and keep single space
+    if (format === "full") {
+      formattedDate = formattedDate.replace(/\n/g, " ");
+    }
+
+    // Copy to clipboard
+    navigator.clipboard.writeText(formattedDate).then(() => {
+      // Visual feedback: add temporary class
+      button.classList.add("copied");
+      setTimeout(() => {
+        button.classList.remove("copied");
+      }, 300);
+    }).catch((err) => {
+      console.error("Errore nella copia negli appunti:", err);
+    });
+
+    // Close menu
+    dateFormatMenu.classList.remove("is-visible");
+  });
+
+  // Close date format menu when clicking outside
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest("#date-display") && !event.target.closest(".date-format-menu")) {
+      dateFormatMenu.classList.remove("is-visible");
+    }
+  });
 
   if (clockWrap && flipClock && analogClock) {
     clockWrap.addEventListener("click", () => {

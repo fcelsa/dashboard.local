@@ -15,7 +15,23 @@
   <div class="app">
     <aside class="left-column">
       <section class="panel calendar-panel">
-        <div class="calendar-header">
+        <div class="months" id="months"></div>
+      </section>
+    </aside>
+
+    <main class="right-column">
+      <section class="panel time-panel" id="time-panel">
+        <div class="calendar-controls">
+          <button class="calendar-view-toggle" id="calendar-view-toggle" type="button"
+            aria-label="Cambia vista calendario" title="Cambia vista calendario">
+            ☰
+          </button>
+          <div id="calendar-nav-indicator" class="nav-indicator"></div>
+        </div>
+        <div class="time-panel-content">
+          <div class="date-display" id="date-display" role="button" aria-label="Mostra formati data disponibili">
+            <span class="date-display-text"></span>
+          </div>
           <div class="clock-wrap" id="clock-wrap" role="button" aria-label="Cambia vista orologio">
             <div class="flip-clock" id="flip-clock" aria-live="polite">
               <div class="flip-unit" data-unit="hours">
@@ -40,19 +56,9 @@
               <span class="moon-phase">—</span>
             </div>
           </div>
-          <div class="calendar-controls">
-            <button class="calendar-view-toggle" id="calendar-view-toggle" type="button"
-              aria-label="Cambia vista calendario" title="Cambia vista calendario">
-              ☰
-            </button>
-            <div id="calendar-nav-indicator" class="nav-indicator"></div>
-          </div>
         </div>
-        <div class="months" id="months"></div>
       </section>
-    </aside>
 
-    <main class="right-column">
       <section class="panel fx-panel">
         <div class="fx-card">
           <div class="fx-meta">
@@ -63,10 +69,6 @@
             <div class="fx-price" id="fx-price">--</div>
             <div class="fx-change" id="fx-change">--</div>
             <div class="fx-updated" id="fx-updated">Aggiornamento: --</div>
-            <div class="fx-mini">
-              <span>Trend giornaliero</span>
-              <canvas id="fx-mini-chart" width="240" height="80" aria-label="Trend giornaliero EUR/USD"></canvas>
-            </div>
           </div>
           <div class="fx-chart">
             <canvas id="fx-chart" width="500" height="200" aria-label="Grafico EUR/USD anno su anno"></canvas>

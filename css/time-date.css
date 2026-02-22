@@ -170,12 +170,10 @@
 }
 
 .nav-indicator {
-  min-height: 14px;
-  font-size: 14px;
+  min-height: 20px;
+  font-size: 19px;
   line-height: 1;
   color: var(--accent);
   font-weight: bold;
   user-select: none;
 }
-
-
