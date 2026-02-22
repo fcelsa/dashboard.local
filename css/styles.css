@@ -672,137 +672,137 @@
   --fx-title-color: #000000;
 }
 
-/* === Amiga Workbench Theme: Classic Blue, Orange, and White (Workbench 1.3/2.0 inspired) === */
+/* === Amiga Workbench Theme: Classic Blue, Orange, and White (Workbench 1.3 inspired) === */
 [data-theme="amiga"] {
-  color-scheme: light;
+  color-scheme: dark;
   
-  /* Main UI: Iconic Blue background, White/Grey panels */
+  /* Main UI: High-contrast Blue and White */
   --bg: #0055AA;
   --bg-gradient: none;
-  --panel: #FFFFFF;
+  --panel: #0055AA;
   --panel-gradient: none;
-  --panel-soft: #AAAAAA;
-  --text: #000000;
-  --muted: #444444;
-  --accent: #FFAA55;
-  --accent-2: #0055AA;
+  --panel-soft: #004499;
+  --text: #FFFFFF;
+  --muted: #AAAAAA;
+  --accent: #FF8800; /* Classic Amiga Orange */
+  --accent-2: #FFFFFF;
   --shadow: none;
   --radius: 0px;
   --border-width: 2px;
-  --flip-bg: #FFFFFF;
-  --flip-text: #000000;
-  --day-today-bg: rgba(255, 170, 85, 0.25);
-  --day-today-text: #000000;
+  --flip-bg: #004499;
+  --flip-text: #FFFFFF;
+  --day-today-bg: #FF8800;
+  --day-today-text: #FFFFFF;
   
   /* Calculator-specific */
-  --calc-bg: #AAAAAA;
-  --calc-panel: #FFFFFF;
-  --calc-border: #000000;
+  --calc-bg: #0055AA;
+  --calc-panel: #0055AA;
+  --calc-border: #FFFFFF;
   --vfd-bg: #000000;
-  --vfd-bg-off: #1a1a1a;
-  --vfd-text: #FFAA55;
-  --vfd-text-dim: #996633;
-  --vfd-accent: rgba(255, 170, 85, 0.5);
-  --vfd-status-off: #444444;
-  --key-bg-default: #FFFFFF;
-  --key-bg-numeric: #0055AA;
-  --key-bg-cyan: #AAAAAA;
-  --key-bg-green: #AAAAAA;
-  --key-bg-light-green: #AAAAAA;
-  --key-bg-gray: #FFFFFF;
-  --key-bg-gray-thumb: #AAAAAA;
+  --vfd-bg-off: #002244;
+  --vfd-text: #FF8800;
+  --vfd-text-dim: #995500;
+  --vfd-accent: rgba(255, 136, 0, 0.5);
+  --vfd-status-off: #004488;
+  --key-bg-default: #0055AA;
+  --key-bg-numeric: #004488;
+  --key-bg-cyan: #0055AA;
+  --key-bg-green: #0055AA;
+  --key-bg-light-green: #0055AA;
+  --key-bg-gray: #0055AA;
+  --key-bg-gray-thumb: #004488;
   --key-text-light: #FFFFFF;
-  --key-text-dark: #000000;
-  --key-text-cyan: #000000;
-  --key-minus-color: #000000;
-  --led-off: #333;
-  --led-on: #FFAA55;
-  --led-glow: rgba(255, 170, 85, 0.6);
+  --key-text-dark: #FFFFFF;
+  --key-text-cyan: #FFFFFF;
+  --key-minus-color: #FFFFFF;
+  --led-off: #003366;
+  --led-on: #FF8800;
+  --led-glow: rgba(255, 136, 0, 0.6);
   --switch-track: #000000;
   --switch-thumb: #FFFFFF;
-  --switch-label: #000;
-  --switch-ticks: #0055AA;
-  --paper-bg: #ffffff;
-  --paper-tape-bg: #ffffff;
-  --paper-ink: #000000;
+  --switch-label: #FFFFFF;
+  --switch-ticks: #FFFFFF;
+  --paper-bg: #0055AA;
+  --paper-tape-bg: #0055AA;
+  --paper-ink: #FFFFFF;
   
   /* Calc-sheet specific */
-  --sheet-bg: #FFFFFF;
-  --sheet-cell: #FFFFFF;
-  --sheet-grid: #000000;
-  --sheet-text: #000000;
-  --sheet-header: #AAAAAA;
-  --sheet-header-text: #000000;
-  --sheet-toolbar-bg: #FFFFFF;
-  --sheet-toolbar-border: #000000;
-  --sheet-toolbar-text: #000000;
-  --sheet-formula-bg: #FFFFFF;
-  --sheet-formula-text: #000000;
-  --sheet-formula-border: #000000;
-  --sheet-tool-bg: #FFFFFF;
-  --sheet-tool-border: #000000;
-  --sheet-tool-text: #000000;
-  --sheet-tool-active-bg: #FFAA55;
-  --sheet-tool-active-border: #000000;
-  --sheet-cell-focus-outline: #0055AA;
-  --sheet-cell-focus-bg: #EEEEEE;
-  --sheet-cell-active-bg: #FFAA55;
+  --sheet-bg: #0055AA;
+  --sheet-cell: #b1cbe6;
+  --sheet-grid: #FFFFFF;
+  --sheet-text: #16191c;
+  --sheet-header: #004499;
+  --sheet-header-text: #FFFFFF;
+  --sheet-toolbar-bg: #0055AA;
+  --sheet-toolbar-border: #FFFFFF;
+  --sheet-toolbar-text: #FFFFFF;
+  --sheet-formula-bg: #004499;
+  --sheet-formula-text: #FFFFFF;
+  --sheet-formula-border: #FFFFFF;
+  --sheet-tool-bg: #004499;
+  --sheet-tool-border: #FFFFFF;
+  --sheet-tool-text: #FFFFFF;
+  --sheet-tool-active-bg: #FF8800;
+  --sheet-tool-active-border: #FFFFFF;
+  --sheet-cell-focus-outline: #FF8800;
+  --sheet-cell-focus-bg: #73a2d1;
+  --sheet-cell-active-bg: #FF8800;
   --sheet-cell-active-shadow: none;
-  --sheet-cell-selected-bg: #0055AA;
+  --sheet-cell-selected-bg: #004499;
   --sheet-cell-selected-shadow: none;
-  --sheet-cell-formula-bg: #EEEEEE;
-  --sheet-cell-corner-bg: #AAAAAA;
-  --sheet-cell-caret-color: #000000;
-  --sheet-save-indicator-bg: #FFFFFF;
-  --sheet-save-indicator-border: #000000;
-  --sheet-save-indicator-active-bg: #0055AA;
+  --sheet-cell-formula-bg: #AAAAAA;
+  --sheet-cell-corner-bg: #004499;
+  --sheet-cell-caret-color: #FFFFFF;
+  --sheet-save-indicator-bg: #004499;
+  --sheet-save-indicator-border: #FFFFFF;
+  --sheet-save-indicator-active-bg: #FF8800;
   --sheet-save-indicator-active-shadow: none;
-  --sheet-formula-empty-text: #666666;
-  --sheet-context-menu-bg: #FFFFFF;
-  --sheet-context-menu-border: 2px solid #000000;
-  --sheet-context-menu-text: #000000;
-  --sheet-context-menu-shadow: 6px 6px #000000;
-  --sheet-context-menu-btn-hover: #FFAA55;
-  --sheet-note-text: #444444;
+  --sheet-formula-empty-text: #AAAAAA;
+  --sheet-context-menu-bg: #0055AA;
+  --sheet-context-menu-border: 2px solid #FFFFFF;
+  --sheet-context-menu-text: #FFFFFF;
+  --sheet-context-menu-shadow: 4px 4px #000000;
+  --sheet-context-menu-btn-hover: #FF8800;
+  --sheet-note-text: #AAAAAA;
   --sheet-grid-shadow: none;
   
   /* Tape/Paper text */
-  --tape-text: #000000;
-  --tape-symbol-color: #000000;
-  --tape-percent-color: #000000;
-  --tape-negative-color: #cc0000;
-  --tape-result-text: #000000;
+  --tape-text: #FFFFFF;
+  --tape-symbol-color: #FFFFFF;
+  --tape-percent-color: #FFFFFF;
+  --tape-negative-color: #FF8800;
+  --tape-result-text: #FFFFFF;
   
   /* Scrollbar styling */
-  --scrollbar-track-bg: #0055AA;
+  --scrollbar-track-bg: #004488;
   --scrollbar-thumb-bg: #FFFFFF;
-  --scrollbar-thumb-hover-bg: #FFAA55;
+  --scrollbar-thumb-hover-bg: #FF8800;
   
   /* History container */
-  --history-container-bg: #0055AA;
+  --history-container-bg: #004488;
   
   /* Moon & Calendar */
   --moon-title-color: #FFFFFF;
-  --moon-phase-color: #FFAA55;
-  --calendar-context-menu-bg: #FFFFFF;
-  --calendar-context-menu-text: #000000;
-  --calendar-context-menu-border: 2px solid #000000;
-  --calendar-context-menu-header-text: #0055AA;
-  --calendar-context-menu-divider: 1px solid #000000;
-  --calendar-context-menu-btn-hover: #FFAA55;
+  --moon-phase-color: #FF8800;
+  --calendar-context-menu-bg: #0055AA;
+  --calendar-context-menu-text: #FFFFFF;
+  --calendar-context-menu-border: 2px solid #FFFFFF;
+  --calendar-context-menu-header-text: #FF8800;
+  --calendar-context-menu-divider: 1px solid #FFFFFF;
+  --calendar-context-menu-btn-hover: #FF8800;
   
   /* Trading Links */
   --trading-bg: #0055AA;
-  --trading-link-bg: #FFFFFF;
-  --trading-link-text: #000000;
-  --trading-link-border: 1px solid #000000;
-  --trading-link-hover-bg: #FFAA55;
-  --trading-link-hover-border: 2px solid #000000;
+  --trading-link-bg: #004488;
+  --trading-link-text: #FFFFFF;
+  --trading-link-border: 1px solid #FFFFFF;
+  --trading-link-hover-bg: #FF8800;
+  --trading-link-hover-border: 2px solid #FFFFFF;
   
   /* FX Status */
   --fx-status-color: #FFFFFF;
   --fx-status-cached-color: #AAAAAA;
-  --fx-change-negative-color: #FFAA55;
+  --fx-change-negative-color: #FF8800;
   --fx-text-color: #FFFFFF;
   --fx-title-color: #FFFFFF;
 }
@@ -960,125 +960,99 @@
 
 /* --- Amiga Overrides --- */
 [data-theme="amiga"] .panel {
-  border: 2px solid #000;
-  box-shadow: 4px 4px 0px rgba(0,0,0,0.5);
-  background: #FFF;
+  border: 2px solid #FFFFFF;
+  box-shadow: 4px 4px 0px #000000;
+  background: #0055AA;
 }
 
 [data-theme="amiga"] .status-header,
 [data-theme="amiga"] .calc-header {
-  background: #FFAA55 !important;
-  border: 1px solid #000;
-  border-bottom: 2px solid #000;
+  background: #0044BB !important;
+  border-bottom: 2px solid #FFFFFF;
   padding: 4px 10px;
-  color: #000;
-  font-weight: bold;
-  height: 24px;
-  line-height: 24px;
+  color: #FFFFFF;
 }
 
 [data-theme="amiga"] .fx-card {
-  background: #FFFFFF !important;
-  border: 1px solid #000;
-  margin-top: -24px; /* Move content down to make room for header if I add one */
+  background: transparent !important;
+  border: none;
 }
 
-/* Add a fake header to the FX panel if it doesn't have one */
-[data-theme="amiga"] .time-panel::before {
-  content: "≡ Time Monitor";
-  display: block;
-  background: #FFAA55 !important;
-  border-bottom: 2px solid #000;
-  padding: 4px 10px;
-  color: #000;
-  font-weight: bold;
-}
-
-[data-theme="amiga"] .fx-panel::before {
-  content: "≡ FX Trading System";
-  display: block;
-  background: #FFAA55 !important;
-  border-bottom: 2px solid #000;
-  padding: 4px 10px;
-  color: #000;
-  font-weight: bold;
-}
-
+/* Remove fake window headers */
+[data-theme="amiga"] .time-panel::before,
+[data-theme="amiga"] .fx-panel::before,
 [data-theme="amiga"] .status-header::before,
 [data-theme="amiga"] .calc-header::before {
-  content: "≡";
-  float: left;
-  margin-right: 10px;
-  font-weight: bold;
+  display: none !important;
 }
 
 [data-theme="amiga"] .calc-btn {
-  border: 2px solid #000 !important;
+  border: 2px solid #FFFFFF !important;
   border-radius: 0 !important;
-  background: #FFF !important;
-  color: #000 !important;
-  box-shadow: 2px 2px 0px #000 !important;
+  background: #0055AA !important;
+  color: #FFFFFF !important;
+  box-shadow: 2px 2px 0px #000000 !important;
 }
 
 [data-theme="amiga"] .calc-btn:active {
-  background: #FFAA55 !important;
+  background: #FF8800 !important;
   box-shadow: none !important;
   transform: translate(2px, 2px);
 }
 
 [data-theme="amiga"] .calc-body {
-  border: 2px solid #000 !important;
-  background: #AAAAAA !important;
-  box-shadow: 4px 4px 0px #000 !important;
+  border: 2px solid #FFFFFF !important;
+  background: #004499 !important;
 }
 
 [data-theme="amiga"] .vfd-display {
-  border: 2px solid #000 !important;
-  background: #000 !important;
-  border-radius: 0 !important;
+  border: 2px solid #FFFFFF !important;
+  background: #000000 !important;
 }
 
 [data-theme="amiga"] .month-card.current-month {
-  border: 2px solid #FFAA55 !important;
-  box-shadow: inset 0 0 0 1px #000 !important;
+  border: 2px solid #FF8800 !important;
+  box-shadow: none !important;
 }
 
 [data-theme="amiga"] .day.today {
-  background: #FFAA55 !important;
-  color: #000 !important;
+  background: #FF8800 !important;
+  color: #FFFFFF !important;
 }
 
 [data-theme="amiga"] .tab-btn {
-  border: 2px solid #000 !important;
+  border: 2px solid #FFFFFF !important;
   border-bottom: none !important;
-  background: #AAAAAA !important;
-  border-radius: 4px 4px 0 0 !important;
+  background: #0044BB !important;
+  color: #FFFFFF !important;
+  border-radius: 0 !important;
   margin-right: 2px;
 }
 
 [data-theme="amiga"] .tab-btn.active {
-  background: #FFFFFF !important;
-  padding-bottom: 2px;
+  background: #FF8800 !important;
+  color: #FFFFFF !important;
 }
 
 [data-theme="amiga"] .calc-dialog {
-  border: 2px solid #000 !important;
-  background: #FFFFFF !important;
-  box-shadow: 8px 8px 0px rgba(0,0,0,0.4) !important;
+  border: 2px solid #FFFFFF !important;
+  background: #0055AA !important;
+  box-shadow: 8px 8px 0px #000000 !important;
 }
 
 [data-theme="amiga"] .calc-dialog-btn {
-  border: 2px solid #000 !important;
-  background: #AAAAAA !important;
-  color: #000 !important;
+  border: 2px solid #FFFFFF !important;
+  background: #0044BB !important;
+  color: #FFFFFF !important;
 }
 
 [data-theme="amiga"] .calc-dialog-btn.primary {
-  background: #FFAA55 !important;
+  background: #FF8800 !important;
 }
 
 [data-theme="amiga"] * {
   font-family: 'Courier New', Courier, monospace !important;
+  text-shadow: none !important;
 }
 
 /* === NeXTSTEP theme: Charcoal, clean lines, bold accents === */
@@ -1796,7 +1770,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-weight: 600;
+  font-weight: 400;
   margin-bottom: 4px;
   font-size: 0.86rem;
 }
@@ -1806,7 +1780,7 @@ body {
   display: grid;
   grid-template-columns: 28px repeat(7, 1fr);
   gap: 0;
-  font-size: 0.95rem;
+  font-size: 0.86rem;
   text-align: right;
   line-height: 1.0;
 }
@@ -1822,13 +1796,13 @@ body {
 
 .week-label {
   color: var(--muted);
-  font-weight: 600;
-  font-size: 0.84rem;
+  font-weight: 400;
+  font-size: 0.86rem;
 }
 
 .week-number {
   color: var(--accent-2);
-  font-weight: 600;
+  font-weight: 400;
   font-size: 0.86rem;
   align-self: center;
 }
