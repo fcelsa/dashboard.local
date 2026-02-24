@@ -37,8 +37,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     const iconMem = document.getElementById("icon-mem");
     const iconGT = document.getElementById("icon-gt");
     const iconGTValue = document.getElementById("icon-gt-value");
-    const iconK = document.getElementById("icon-k");
-    const iconKValue = document.getElementById("icon-k-value");
     const iconTapeCount = document.getElementById("icon-tape-count");
     const iconOperator = document.getElementById("icon-operator");
     const iconBusiness = document.getElementById("icon-business");
@@ -130,9 +128,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     let pendingGTChord = false;
     let pendingGTTimeout = null;
     let pendingRateInput = false;
-    let pendingRateTimeout = null;
-    let pendingKInput = false;
-    let pendingKTimeout = null;
+    let rateEditActive = false;
+    let taxRateHoldTimeout = null;
+    let taxRateHoldTriggered = false;
+    let suppressTaxPlusClick = false;
     // --- FOCUS STATE ---
     const isCalculatorFocused = () => Boolean(
         calculatorWrapper && (calculatorWrapper.matches(':hover') || calculatorWrapper.matches(':focus-within'))
@@ -326,14 +325,6 @@ document.addEventListener("DOMContentLoaded", async () => {
             iconGTValue.textContent = status.gt ? formatNumber(gtValue) : "";
         }
         if (iconMinus) iconMinus.className = status.minus ? "vfd-icon on" : "vfd-icon off";
-        if (iconK) {
-            const hasKValue = status.k !== null && status.k !== 0;
-            iconK.classList.toggle("on", hasKValue);
-            iconK.classList.toggle("off", !hasKValue);
-        }
-        if (iconKValue) {
-            iconKValue.textContent = status.k !== null && status.k !== 0 ? "= " + formatNumber(status.k) : "";
-        }
     };
     function formatStackValue(value) {
         const rounded = Math.round(Number(value) * 1000) / 1000;
@@ -376,7 +367,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             isFloat: s.isFloat,
             addMode: s.addMode,
             accumulateGT: s.accumulateGT,
-            memoryMode: s.accumulateGT ? 'stack' : 'algebric'
+            memoryMode: s.accumulateGT ? 'stack' : 'algebraic'
         });
     }
 
@@ -399,10 +390,23 @@ document.addEventListener("DOMContentLoaded", async () => {
         const ONE_YEAR = 60 * 60 * 24 * 365;
         setCookie(rateCookieKey, rate, ONE_YEAR);
         pendingRateInput = false;
-        if (pendingRateTimeout) clearTimeout(pendingRateTimeout);
-        pendingRateTimeout = null;
         if (vfdDisplayWrap) vfdDisplayWrap.classList.remove("is-blink");
+        rateEditActive = false;
     };
+
+    function startRateEditMode() {
+        rateEditActive = true;
+        pendingRateInput = true;
+        if (vfdDisplayWrap) vfdDisplayWrap.classList.add("is-blink");
+        updateDisplay("RATE");
+
+        setTimeout(() => {
+            if (!rateEditActive) return;
+            if (vfdDisplayWrap) vfdDisplayWrap.classList.remove("is-blink");
+            updateDisplay(String(engine.taxRate));
+            engine.pressKey('RATE');
+        }, 500);
+    }
 
     engine.onBeforeClearAll = handleBeforeClearAll;
 
@@ -422,12 +426,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     const businessKeys = new Set(['COST', 'SELL', 'MARGIN', 'MARKUP', 'TAX+', 'TAX-']);
-    const nonOperandKeys = new Set(['RATE', 'GT', '#', 'CE', 'C', 'CLEAR_ALL', 'T', 'T1']);
+    const nonOperandKeys = new Set(['GT', '#', 'CE', 'C', 'CLEAR_ALL', 'T', 'T1', 'EXPR']);
     const operatorDisplayMap = new Map([
         ['+', '+'],
         ['-', '-'],
         ['x', 'x'],
         ['÷', '÷'],
+        ['(', '('],
+        [')', ')'],
         ['%', '%'],
         ['Δ', 'Δ'],
         ['^', '^'],
@@ -454,7 +460,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // Keys whose tape entries should NOT be editable
     const nonEditableKeys = new Set([
-        'T1', 'S1', 'GT', 'C', 'CLEAR_ALL', 'CONST', 'RATE', 'K', '#'
+        'T1', 'S1', 'GT', 'C', 'CLEAR_ALL', 'CONST', '#', 'EXPR'
     ]);
 
     /**
@@ -527,6 +533,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         
         const row = document.createElement("div");
         row.className = "tape-row";
+        const isExpressionRow = entry?.key === 'EXPR' || entry?.type === 'expression';
         const entryValue = entry?.val;
         const entryNumber = Number(String(entryValue).replace(',', '.'));
         const isZeroValue = !Number.isNaN(entryNumber) && entryNumber === 0;
@@ -560,7 +567,9 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
         }
 
-        if (entry.symbol === '◇' || entry.symbol === 'S' || entry.symbol === 'T' || forcedAlignRightForEquals) {
+        if (isExpressionRow) {
+            row.classList.add("align-left", "tape-expression");
+        } else if (entry.symbol === '◇' || entry.symbol === 'S' || entry.symbol === 'T' || forcedAlignRightForEquals) {
             row.classList.add("align-right");
         } else if (['x', '÷', 'CONST'].includes(entry.key) || entry.symbol === '=') {
             // Keep multiplication/division and explicit '=' result markers left aligned
@@ -570,7 +579,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
 
         // Visual Separation for Result Blocks (Empty symbol with = key)
-        if (entry.symbol === '◇' || (entry.key === '=' && entry.symbol === '' && entry.type !== 'input') || entry.type === 'result') {
+        if (!isExpressionRow && (entry.symbol === '◇' || (entry.key === '=' && entry.symbol === '' && entry.type !== 'input') || entry.type === 'result')) {
             row.classList.add("result-row");
         }
 
@@ -587,7 +596,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         
         let displayVal = entry.val;
         // If it's a number, format it
-        if (typeof entry.val === 'number') {
+           if (isExpressionRow) {
+               displayVal = String(entry.expression || entry.val || '');
+           } else if (typeof entry.val === 'number') {
              displayVal = formatNumber(entry.val);
         } else if (!isNaN(parseFloat(entry.val)) && entry.key !== '#') {
              displayVal = formatNumber(entry.val);
@@ -613,7 +624,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         const symSpan = document.createElement("span");
         symSpan.className = "tape-symbol";
         const lead = entry.leadSymbol ? `${entry.leadSymbol} ` : "";
-        symSpan.textContent = `${lead}${entry.symbol || ""}`;
+        symSpan.textContent = isExpressionRow ? '' : `${lead}${entry.symbol || ""}`;
         if (entry.symbol === 'S' || entry.symbol === 'T') {
             symSpan.classList.add("tape-symbol-small");
         }
@@ -622,7 +633,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         row.appendChild(valSpan);
         row.appendChild(symSpan);
 
-        if (typeof entry.percentValue !== "undefined") {
+        if (!isExpressionRow && typeof entry.percentValue !== "undefined") {
             const percentSpan = document.createElement("span");
             percentSpan.className = "tape-percent";
             const formatted = formatNumber(entry.percentValue);
@@ -949,51 +960,15 @@ document.addEventListener("DOMContentLoaded", async () => {
             setBusinessIndicator(false);
         }
 
-        if (pendingKInput && (engineKey === '=' || engineKey === 'Enter' || engineKey === 'CLEAR_ALL' || engineKey === 'CE')) {
-            pendingKInput = false;
-            if (pendingKTimeout) clearTimeout(pendingKTimeout);
-            pendingKTimeout = null;
-            if (iconK) iconK.classList.remove("blink");
-        }
-
         if (engineKey === "CLEAR_ALL") {
             const forcePaperReset = isTapeAtZeroClear();
             triggerClearFeedback(forcePaperReset);
         }
 
-        if (key === 'RATE') {
-            if (vfdDisplay && vfdDisplay.textContent.trim() !== '0') {
-                engine.pressKey('CLEAR_ALL');
-            }
-            pendingRateInput = true;
-            if (pendingRateTimeout) clearTimeout(pendingRateTimeout);
-            pendingRateTimeout = setTimeout(() => {
-                pendingRateInput = false;
-                pendingRateTimeout = null;
-                if (vfdDisplayWrap) vfdDisplayWrap.classList.remove("is-blink");
-                engine.pressKey('CLEAR_ALL');
-            }, 5000);
-            if (vfdDisplayWrap) vfdDisplayWrap.classList.add("is-blink");
-            if (engine?.taxRate !== undefined && engine?.taxRate !== null) {
-                updateDisplay(String(engine.taxRate));
-            }
-            engine.pressKey('RATE');
-            return;
-        }
-
-        if (key === 'K') {
-            pendingKInput = true;
-            if (pendingKTimeout) clearTimeout(pendingKTimeout);
-            pendingKTimeout = setTimeout(() => {
-                if (!pendingKInput) return;
-                pendingKInput = false;
-                pendingKTimeout = null;
-                if (iconK) iconK.classList.remove("blink");
-                engine.pressKey('=');
-            }, 5000);
-            if (iconK) iconK.classList.add("blink");
-            engine.pressKey('K');
-            return;
+        if (rateEditActive && (engineKey === '=' || engineKey === 'Enter')) {
+            pendingRateInput = false;
+            rateEditActive = false;
+            if (vfdDisplayWrap) vfdDisplayWrap.classList.remove("is-blink");
         }
 
         if (key === 'GT') {
@@ -1026,6 +1001,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (key === '.' || key === ',') return '.';
         if (key === '+') return '+';
         if (key === '-') return '-';
+        if (key === '(') return '(';
+        if (key === ')') return ')';
         if (key === '%') return '%';
         if (key === '*' || key.toLowerCase() === 'x') return 'x';
         if (key === '/') return '÷';
@@ -1040,7 +1017,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (key.toLowerCase() === 'd') return 'Δ';
         if (key.toLowerCase() === 'r') return '√';
         if (key.toLowerCase() === 'p') return '^';
-        if (key.toLowerCase() === 'k') return 'K';
         return null;
     }
     
@@ -1048,7 +1024,43 @@ document.addEventListener("DOMContentLoaded", async () => {
     
     function handleUiClick(buttonEl) {
         const action = buttonEl.getAttribute("data-key");
+        if (action === 'TAX+' && suppressTaxPlusClick) {
+            suppressTaxPlusClick = false;
+            return;
+        }
         if (action) handleInput(action);
+    }
+
+    function bindTaxRateLongPress() {
+        const taxButtons = keyButtonsMap.get('TAX+') || [];
+        if (taxButtons.length === 0) return;
+
+        const cancelHold = () => {
+            if (taxRateHoldTimeout) clearTimeout(taxRateHoldTimeout);
+            taxRateHoldTimeout = null;
+        };
+
+        const startHold = () => {
+            taxRateHoldTriggered = false;
+            cancelHold();
+            taxRateHoldTimeout = setTimeout(() => {
+                taxRateHoldTriggered = true;
+                suppressTaxPlusClick = true;
+                startRateEditMode();
+            }, 3000);
+        };
+
+        taxButtons.forEach((btn) => {
+            btn.addEventListener('pointerdown', startHold);
+            btn.addEventListener('pointerup', cancelHold);
+            btn.addEventListener('pointerleave', cancelHold);
+            btn.addEventListener('pointercancel', cancelHold);
+            btn.addEventListener('click', () => {
+                if (taxRateHoldTriggered) {
+                    taxRateHoldTriggered = false;
+                }
+            });
+        });
     }
 
     function handleKeyboard(event) {
@@ -1448,6 +1460,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     keys.forEach(k => {
         k.addEventListener("click", () => handleUiClick(k));
     });
+    bindTaxRateLongPress();
 
     // 2. Keyboard Input
     document.addEventListener("keydown", handleKeyboard);

@@ -163,10 +163,6 @@
                       <span class="vfd-icon off" id="icon-gt">GT</span>
                       <span class="vfd-icon-value" id="icon-gt-value"></span>
                     </div>
-                    <div class="vfd-icon-row">
-                      <span class="vfd-icon off" id="icon-k">K</span>
-                      <span class="vfd-icon-value" id="icon-k-value"></span>
-                    </div>
                     <span class="vfd-icon off" id="icon-mem">M</span>
                   </div>
                   <span class="vfd-text" id="vfd-display">0</span>
@@ -240,30 +236,9 @@
                     <button class="key-btn key-rect key-gray" data-key="MARKUP">MARKUP</button>
                     <button class="key-btn key-rect key-gray" data-key="TAX+">TAX+</button>
                     <button class="key-btn key-rect key-gray" data-key="TAX-">TAX-</button>
-                    <button class="key-btn key-rect key-gray" data-key="RATE">RATE</button>
-                    <button class="key-btn key-rect key-gray" data-key="K">K</button>
                   </div>
 
                   <div class="calc-main-keys">
-                    <!-- Blocco 1: Moltiplicazione/Divisione (Sinistra) -->
-                    <div class="key-block block-left">
-                      <!-- Colonna 1 -->
-                      <button class="key-btn key-square key-cyan" data-key="Δ"
-                        title="Variazione % (Tasto: d)">Δ</button>
-                      <button class="key-btn key-square key-cyan" data-key="√"
-                        title="Radice Quadrata (Tasto: r)">√</button>
-                      <button class="key-btn key-square key-cyan" data-key="^"
-                        title="Potenza (Tasto: ^ o p)">xʸ</button>
-                      <button class="key-btn key-square key-cyan" data-key="#"
-                        title="Non-Add / Data (Tasto: #)">#</button>
-
-                      <!-- Colonna 2 -->
-                      <button class="key-btn key-square key-cyan" data-key="x">x</button>
-                      <button class="key-btn key-square key-cyan" data-key="=">=</button>
-                      <button class="key-btn key-square key-cyan" data-key="%">%</button>
-                      <button class="key-btn key-square key-cyan" data-key="÷">÷</button>
-                    </div>
-
                     <!-- Blocco 2: Numerico (Centrale) -->
                     <div class="key-block block-center">
                       <button class="key-btn key-round" data-key="CE" title="Cancella/Azzeramento">CE</button>
@@ -289,33 +264,24 @@
 
                     <!-- Blocco 3: Operatori/Totali (Destra) -->
                     <div class="key-block block-right">
-                      <!-- Riga 1 -->
-                      <button class="key-btn key-square key-green key-double-h" style="grid-column: span 2;"
-                        data-key="-">-</button>
-                      <button class="key-btn key-square key-green" data-key="T1" title="Totale (Tasto: t)">T</button>
+                      <button class="key-btn key-square key-cyan" data-key="x">x</button>
+                      <button class="key-btn key-square key-cyan" data-key="÷">÷</button>
+                      <button class="key-btn key-square key-cyan" data-key="^" title="Potenza (Tasto: ^ o p)">xʸ</button>
                       <button class="key-btn key-square key-light-green" data-key="MC" title="Memory Clear">MC</button>
 
-                      <!-- Blocco sotto: Tasto + Grande e controlli laterali -->
-                      <div class="block-right-lower">
-                        <button class="key-btn key-square key-green key-plus-large" data-key="+">+</button>
-                        <div class="block-right-side-cols">
-                          <!-- Colonna Subtotali -->
-                          <button class="key-btn key-square key-green" data-key="S1"
-                            title="Subtotale (Tasto: i)">S</button>
-                          <button class="key-btn key-square key-green" data-key="GT"
-                            title="Grand Total (Tasto: g)">GT</button>
-                          <button class="key-btn key-square key-green" data-key="CNT"
-                            title="Conteggio (Tasto: n)">CNT</button>
+                      <button class="key-btn key-square key-green" data-key="-">-</button>
+                      <button class="key-btn key-square key-cyan" data-key="%">%</button>
+                      <button class="key-btn key-square key-cyan" data-key="√" title="Radice Quadrata (Tasto: r)">√</button>
+                      <button class="key-btn key-square key-light-green" data-key="MR" title="Memory Recall">MR</button>
 
-                          <!-- Colonna Tot 2 -->
-                          <button class="key-btn key-square key-light-green" data-key="MR"
-                            title="Memory Recall">MR</button>
-                          <button class="key-btn key-square key-light-green" data-key="M-"
-                            title="Memory Minus">M-</button>
-                          <button class="key-btn key-square key-light-green" data-key="M+"
-                            title="Memory Plus">M+</button>
-                        </div>
-                      </div>
+                      <button class="key-btn key-square key-green" data-key="+">+</button>
+                      <button class="key-btn key-square key-cyan" data-key="Δ" title="Variazione % (Tasto: d)">Δ</button>
+                      <button class="key-btn key-square key-green" data-key="GT" title="Grand Total">GT</button>
+                      <button class="key-btn key-square key-light-green" data-key="M-" title="Memory Minus">M-</button>
+
+                      <button class="key-btn key-square key-cyan key-double-h" data-key="=">=</button>
+                      <button class="key-btn key-square key-cyan" data-key="#" title="Non-Add / Data (Tasto: #)">#</button>
+                      <button class="key-btn key-square key-light-green" data-key="M+" title="Memory Plus">M+</button>
                     </div>
                   </div> <!-- close calc-main-keys -->
                 </div>

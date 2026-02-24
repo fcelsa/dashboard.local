@@ -9,7 +9,30 @@ import {
     removeTax
 } from './engine/business-math.js';
 
-import { roundToDecimals, applyRounding } from './utils/number-utils.js';
+import { applyRounding } from './utils/number-utils.js';
+
+const NON_EDITABLE_KEYS = new Set([
+    'T1', 'S1', 'GT', 'C', 'CLEAR_ALL', 'CONST', 'RATE', 'EXPR'
+]);
+
+const CHECKPOINT_KEYS = new Set([
+    '+', '-', 'x', '÷', '=', 'Enter', '(', ')',
+    'T', 'T1', 'S', 'S1', '%', 'Δ', '√', '^',
+    'RATE', 'TAX+', 'TAX-', 'COST', 'SELL', 'MARGIN', 'MARKUP',
+    'CLEAR_ALL', 'M+', 'M-', 'MR', 'MC'
+]);
+
+const EXPRESSION_OPERATORS = new Set(['+', '-', 'x', '÷', '^']);
+
+const EXPRESSION_PRECEDENCE = {
+    '+': 1,
+    '-': 1,
+    'x': 2,
+    '÷': 2,
+    '^': 3
+};
+
+const RIGHT_ASSOCIATIVE_OPERATORS = new Set(['^']);
 
 class CalculatorEngine {
     constructor(settings = {}) {
@@ -42,6 +65,9 @@ class CalculatorEngine {
         this.pendingDelta = null;
         this.pendingPowerBase = null;
         this.addModeBuffer = "";
+        this.expressionTokens = [];
+        this.expressionOpenCount = 0;
+        this.isExpressionMode = false;
 
         // Undo/Redo
         this.undoStack = [];
@@ -61,10 +87,6 @@ class CalculatorEngine {
         this.sellValue = null;
         this.pricingMode = 'margin'; // 'margin' | 'markup'
         this.awaitingRate = false;
-        this.constantK = null;
-        this.awaitingK = false;
-        this.kInitialValue = null;
-        this.kInitialFromDisplay = false;
 
         // Settings (default)
         this.settings = {
@@ -145,9 +167,6 @@ class CalculatorEngine {
         if (!entry || entry.type !== 'input') return false;
 
         // Keys that represent computed/structural rows — not editable
-        const NON_EDITABLE_KEYS = new Set([
-            'T1', 'S1', 'GT', 'C', 'CLEAR_ALL', 'CONST', 'RATE', 'K'
-        ]);
         if (NON_EDITABLE_KEYS.has(entry.key)) return false;
 
         this._checkpoint();
@@ -163,13 +182,7 @@ class CalculatorEngine {
     }
 
     _shouldCheckpoint(key) {
-        const checkpointKeys = new Set([
-            '+', '-', 'x', '÷', '=', 'Enter',
-            'T', 'T1', 'S', 'S1', '%', 'Δ', '√', '^',
-            'RATE', 'TAX+', 'TAX-', 'COST', 'SELL', 'MARGIN', 'MARKUP',
-            'CLEAR_ALL', 'M+', 'M-', 'MR', 'MC'
-        ]);
-        return checkpointKeys.has(key);
+        return CHECKPOINT_KEYS.has(key);
     }
 
     _emitMemoryUpdate() {
@@ -198,8 +211,7 @@ class CalculatorEngine {
                 acc2: false,
                 gt: this.grandTotal !== 0,
                 error: this.errorState,
-                minus: parseFloat(this.currentInput) < 0 || (this.currentInput === '0' && this.accumulator < 0 && !this.isNewSequence), // Logic for minus sign? Usually just current displayed number
-                k: this.constantK
+                minus: parseFloat(this.currentInput) < 0 || (this.currentInput === '0' && this.accumulator < 0 && !this.isNewSequence)
             });
         }
     }
@@ -230,6 +242,9 @@ class CalculatorEngine {
         this.multDivTotalPendingClear = false;
         this.pendingDelta = null;
         this.pendingPowerBase = null;
+        this.expressionTokens = [];
+        this.expressionOpenCount = 0;
+        this.isExpressionMode = false;
 
         try {
             for (const entry of savedEntries) {
@@ -263,6 +278,8 @@ class CalculatorEngine {
                         this._handleSubTotal(1);
                     } else if (entry.key === 'GT') {
                         this._handleGrandTotal();
+                    } else if (entry.key === 'EXPR') {
+                        this._handleExpressionReplay(entry);
                     }
                 }
             }
@@ -309,28 +326,11 @@ class CalculatorEngine {
              }
         }
 
-        // K Confirmation Logic
-        if (this.awaitingK) {
-             const isNumeric = (!isNaN(parseFloat(key)) || key === '00' || key === '000' || key === '.');
-             if (key === '=' || key === 'Enter') {
-                 const kVal = parseFloat(this.currentInput);
-                 if (!isNaN(kVal) && this.currentInput !== this.kInitialValue) {
-                     this.constantK = kVal;
-                 } else if (this.kInitialFromDisplay && !isNaN(kVal)) {
-                     this.constantK = kVal;
-                 } else {
-                     this.constantK = 0;
-                 }
-                 this.awaitingK = false;
-                 this.kInitialValue = null;
-                 this.kInitialFromDisplay = false;
-                 this._emitStatus();
-                 this._clearAll();
-                 return;
-             }
-             if (!isNumeric) {
-                 return;
-             }
+        if (this.isExpressionMode || key === '(' || key === ')') {
+            const handledExpressionKey = this._handleExpressionKey(key);
+            if (handledExpressionKey || this.isExpressionMode) {
+                return;
+            }
         }
 
         // Numeric Input
@@ -383,7 +383,6 @@ class CalculatorEngine {
 
             // Business Keys
             case 'RATE':
-            case 'K':
             case 'TAX+':
             case 'TAX-':
             case 'COST':
@@ -479,6 +478,387 @@ class CalculatorEngine {
             this.currentInput += ".";
         }
         if (!this.isReplaying) this.onDisplayUpdate(this.currentInput);
+    }
+
+    _resetExpressionState() {
+        this.expressionTokens = [];
+        this.expressionOpenCount = 0;
+        this.isExpressionMode = false;
+    }
+
+    _isExpressionOperator(token) {
+        return EXPRESSION_OPERATORS.has(token);
+    }
+
+    _isExpressionValueToken(token) {
+        if (typeof token !== 'string') return false;
+        if (token.trim() === '') return false;
+        return !isNaN(Number(token));
+    }
+
+    _getExpressionPreview() {
+        const tokens = [...this.expressionTokens];
+        if (!this.isNewSequence) {
+            tokens.push(this.currentInput);
+        }
+        if (tokens.length === 0) return '0';
+        return tokens.join(' ');
+    }
+
+    _pushExpressionValueToken() {
+        if (this.isNewSequence) return true;
+        const raw = this.currentInput;
+        if (raw === '-') return false;
+        const parsed = Number(raw);
+        if (isNaN(parsed)) return false;
+        this.expressionTokens.push(String(parsed));
+        this.currentInput = '0';
+        this.isNewSequence = true;
+        return true;
+    }
+
+    _updateExpressionDisplay() {
+        if (!this.isReplaying) this.onDisplayUpdate(this._getExpressionPreview());
+    }
+
+    _handleExpressionNumber(digits) {
+        if (this.isNewSequence || this.currentInput === '0') {
+            this.currentInput = String(digits);
+            this.isNewSequence = false;
+        } else {
+            if (this.currentInput.replace('.', '').length >= 16) return;
+            this.currentInput += String(digits);
+        }
+        this._updateExpressionDisplay();
+    }
+
+    _handleExpressionDecimal() {
+        if (this.isNewSequence) {
+            this.currentInput = '0.';
+            this.isNewSequence = false;
+            this._updateExpressionDisplay();
+            return;
+        }
+        if (this.currentInput.includes('.')) return;
+        this.currentInput += '.';
+        this._updateExpressionDisplay();
+    }
+
+    _handleExpressionOpenParen() {
+        const committed = this._pushExpressionValueToken();
+        if (!committed) return;
+
+        const last = this.expressionTokens[this.expressionTokens.length - 1];
+        if (this._isExpressionValueToken(last) || last === ')') {
+            this.expressionTokens.push('x');
+        }
+
+        this.expressionTokens.push('(');
+        this.expressionOpenCount += 1;
+        this.isExpressionMode = true;
+        this.currentInput = '0';
+        this.isNewSequence = true;
+        this._updateExpressionDisplay();
+    }
+
+    _handleExpressionCloseParen() {
+        if (this.expressionOpenCount <= 0) return;
+        const committed = this._pushExpressionValueToken();
+        if (!committed) return;
+
+        const last = this.expressionTokens[this.expressionTokens.length - 1];
+        if (!last || this._isExpressionOperator(last) || last === '(') return;
+
+        this.expressionTokens.push(')');
+        this.expressionOpenCount -= 1;
+        this.isExpressionMode = true;
+        this._updateExpressionDisplay();
+    }
+
+    _handleExpressionOperator(op) {
+        const tokensLen = this.expressionTokens.length;
+        const last = tokensLen > 0 ? this.expressionTokens[tokensLen - 1] : null;
+        const unaryMinusAllowed = op === '-' &&
+            (tokensLen === 0 || last === '(' || this._isExpressionOperator(last));
+
+        if (unaryMinusAllowed && this.isNewSequence) {
+            this.currentInput = '-';
+            this.isNewSequence = false;
+            this.isExpressionMode = true;
+            this._updateExpressionDisplay();
+            return;
+        }
+
+        const committed = this._pushExpressionValueToken();
+        if (!committed) {
+            this._triggerError('Error');
+            return;
+        }
+
+        const currentLast = this.expressionTokens[this.expressionTokens.length - 1];
+        if (!currentLast || currentLast === '(') return;
+
+        if (this._isExpressionOperator(currentLast)) {
+            this.expressionTokens[this.expressionTokens.length - 1] = op;
+        } else {
+            this.expressionTokens.push(op);
+        }
+
+        this.currentInput = '0';
+        this.isNewSequence = true;
+        this.isExpressionMode = true;
+        this._updateExpressionDisplay();
+    }
+
+    _handleExpressionBackspace() {
+        if (!this.isNewSequence && this.currentInput.length > 0) {
+            this.currentInput = this.currentInput.slice(0, -1);
+            if (this.currentInput === '' || this.currentInput === '-') {
+                this.currentInput = '0';
+                this.isNewSequence = true;
+            }
+            this._updateExpressionDisplay();
+            return;
+        }
+
+        if (this.expressionTokens.length === 0) return;
+        const removed = this.expressionTokens.pop();
+        if (removed === '(') this.expressionOpenCount = Math.max(0, this.expressionOpenCount - 1);
+        if (removed === ')') this.expressionOpenCount += 1;
+        this._updateExpressionDisplay();
+    }
+
+    _evaluateExpressionTokens(tokens) {
+        const outputQueue = [];
+        const operatorStack = [];
+
+        for (const token of tokens) {
+            if (this._isExpressionValueToken(token)) {
+                outputQueue.push(token);
+                continue;
+            }
+
+            if (this._isExpressionOperator(token)) {
+                while (operatorStack.length > 0) {
+                    const stackTop = operatorStack[operatorStack.length - 1];
+                    if (!this._isExpressionOperator(stackTop)) break;
+
+                    const currentPrecedence = EXPRESSION_PRECEDENCE[token];
+                    const stackPrecedence = EXPRESSION_PRECEDENCE[stackTop];
+                    const isRightAssociative = RIGHT_ASSOCIATIVE_OPERATORS.has(token);
+
+                    const shouldPop = isRightAssociative
+                        ? currentPrecedence < stackPrecedence
+                        : currentPrecedence <= stackPrecedence;
+
+                    if (!shouldPop) break;
+                    outputQueue.push(operatorStack.pop());
+                }
+
+                operatorStack.push(token);
+                continue;
+            }
+
+            if (token === '(') {
+                operatorStack.push(token);
+                continue;
+            }
+
+            if (token === ')') {
+                let foundOpenParen = false;
+                while (operatorStack.length > 0) {
+                    const top = operatorStack.pop();
+                    if (top === '(') {
+                        foundOpenParen = true;
+                        break;
+                    }
+                    outputQueue.push(top);
+                }
+                if (!foundOpenParen) throw new Error('ExpressionParenthesesMismatch');
+            }
+        }
+
+        while (operatorStack.length > 0) {
+            const op = operatorStack.pop();
+            if (op === '(' || op === ')') throw new Error('ExpressionParenthesesMismatch');
+            outputQueue.push(op);
+        }
+
+        const evalStack = [];
+        for (const token of outputQueue) {
+            if (this._isExpressionValueToken(token)) {
+                evalStack.push(Number(token));
+                continue;
+            }
+
+            if (!this._isExpressionOperator(token)) {
+                throw new Error('ExpressionInvalidToken');
+            }
+
+            if (evalStack.length < 2) {
+                throw new Error('ExpressionInvalidSyntax');
+            }
+
+            const right = evalStack.pop();
+            const left = evalStack.pop();
+            let partial = 0;
+            if (token === '+') partial = left + right;
+            else if (token === '-') partial = left - right;
+            else if (token === 'x') partial = left * right;
+            else if (token === '÷') {
+                if (right === 0) throw new Error('DivisionByZero');
+                partial = left / right;
+            } else if (token === '^') {
+                partial = Math.pow(left, right);
+            }
+
+            evalStack.push(partial);
+        }
+
+        if (evalStack.length !== 1) {
+            throw new Error('ExpressionInvalidSyntax');
+        }
+
+        return evalStack[0];
+    }
+
+    _executeExpressionTokens(tokens, expressionText = null) {
+        const resultRaw = this._evaluateExpressionTokens(tokens);
+        const roundedResult = this._applyRoundingWithFlag(resultRaw);
+        const result = roundedResult.value;
+        const expressionForTape = expressionText || tokens.join(' ');
+
+        this._addHistoryEntry({
+            val: expressionForTape,
+            symbol: '=',
+            key: 'EXPR',
+            type: 'input',
+            expression: expressionForTape,
+            expressionTokens: [...tokens]
+        });
+
+        this._addHistoryEntry({
+            val: this._formatResult(result),
+            symbol: '',
+            key: '=',
+            type: 'result',
+            roundingFlag: roundedResult.roundingFlag
+        });
+
+        this.accumulator += result;
+        this.accumulator = parseFloat(Number(this.accumulator).toPrecision(15));
+        this._accumulateGT(result);
+
+        const accumRounded = this._applyRoundingWithFlag(this.accumulator);
+        this._addHistoryEntry({
+            val: this._formatResult(accumRounded.value),
+            symbol: 'S',
+            key: 'S',
+            type: 'result',
+            roundingFlag: accumRounded.roundingFlag
+        });
+
+        if (!this.isReplaying) this.onDisplayUpdate(this._formatResult(result));
+
+        this.currentInput = String(result);
+        this.isNewSequence = true;
+        this.lastOperation = null;
+        this.pendingAddSubOp = null;
+        this.addSubOperand = null;
+        this.addSubResults = [];
+        this.pendingMultDivOp = null;
+        this.multDivOperand = null;
+        this.awaitingMultDivTotal = false;
+        this.lastMultDivResult = null;
+        this.multDivResults = [];
+        this.multDivTotalPendingClear = false;
+        this.pendingDelta = null;
+        this.pendingPowerBase = null;
+        this._resetExpressionState();
+        this._emitStatus();
+    }
+
+    _handleExpressionReplay(entry) {
+        const tokens = Array.isArray(entry.expressionTokens) ? [...entry.expressionTokens] : null;
+        if (!tokens || tokens.length === 0) return;
+        this._executeExpressionTokens(tokens, entry.expression || String(entry.val));
+    }
+
+    _handleExpressionKey(key) {
+        if (key === 'CLEAR_ALL') {
+            this._clearAll();
+            return true;
+        }
+
+        if (key === 'CE') {
+            this.currentInput = '0';
+            this.isNewSequence = true;
+            this._updateExpressionDisplay();
+            return true;
+        }
+
+        if (key === 'BACKSPACE') {
+            this._handleExpressionBackspace();
+            return true;
+        }
+
+        if (!isNaN(parseFloat(key)) || key === '00' || key === '000') {
+            this._handleExpressionNumber(key);
+            this.isExpressionMode = true;
+            return true;
+        }
+
+        if (key === '.') {
+            this._handleExpressionDecimal();
+            this.isExpressionMode = true;
+            return true;
+        }
+
+        if (key === '(') {
+            this._handleExpressionOpenParen();
+            return true;
+        }
+
+        if (key === ')') {
+            this._handleExpressionCloseParen();
+            return true;
+        }
+
+        if (this._isExpressionOperator(key)) {
+            this._handleExpressionOperator(key);
+            return true;
+        }
+
+        if (key === '=' || key === 'Enter') {
+            const committed = this._pushExpressionValueToken();
+            if (!committed || this.expressionTokens.length === 0) {
+                this._triggerError('Error');
+                this._resetExpressionState();
+                return true;
+            }
+            if (this.expressionOpenCount !== 0) {
+                this._triggerError('Error');
+                this._resetExpressionState();
+                return true;
+            }
+
+            const last = this.expressionTokens[this.expressionTokens.length - 1];
+            if (!last || this._isExpressionOperator(last) || last === '(') {
+                this._triggerError('Error');
+                this._resetExpressionState();
+                return true;
+            }
+
+            try {
+                this._executeExpressionTokens([...this.expressionTokens]);
+            } catch (error) {
+                if (!this.isReplaying) this._triggerError('Error');
+                this._resetExpressionState();
+            }
+            return true;
+        }
+
+        return false;
     }
 
     _handleAddSub(op, explicitVal = null) {
@@ -660,15 +1040,9 @@ class CalculatorEngine {
         this.pendingAddSubOp = null;
         this.addSubOperand = null;
         this.addSubResults = [];
-        if (this.pendingMultDivOp && this.isNewSequence && this.currentInput === "0" && this.constantK !== null && this.constantK !== 0) {
-            this._handleEqual(this.constantK);
-            return;
-        }
         let val;
         if (explicitVal !== null) {
             val = explicitVal;
-        } else if (this.pendingMultDivOp && this.constantK !== null && this.isNewSequence && this.currentInput === "0") {
-            val = this.constantK;
         } else {
             val = parseFloat(this.currentInput);
         }
@@ -1423,10 +1797,12 @@ class CalculatorEngine {
             costValue: this.costValue,
             sellValue: this.sellValue,
             pricingMode: this.pricingMode,
-            constantK: this.constantK,
             gtPending: this.gtPending,
             pendingDelta: this.pendingDelta,
-            pendingPowerBase: this.pendingPowerBase
+            pendingPowerBase: this.pendingPowerBase,
+            expressionTokens: [...this.expressionTokens],
+            expressionOpenCount: this.expressionOpenCount,
+            isExpressionMode: this.isExpressionMode
         };
     }
 
@@ -1462,10 +1838,12 @@ class CalculatorEngine {
         this.costValue = snapshot.costValue ?? null;
         this.sellValue = snapshot.sellValue ?? null;
         this.pricingMode = snapshot.pricingMode ?? 'margin';
-        this.constantK = snapshot.constantK ?? null;
         this.gtPending = snapshot.gtPending ?? false;
         this.pendingDelta = snapshot.pendingDelta ?? null;
         this.pendingPowerBase = snapshot.pendingPowerBase ?? null;
+        this.expressionTokens = [...(snapshot.expressionTokens || [])];
+        this.expressionOpenCount = snapshot.expressionOpenCount ?? 0;
+        this.isExpressionMode = snapshot.isExpressionMode ?? false;
         
         // Refresh UI
         this.onDisplayUpdate(this._formatResult(this.currentInput));
@@ -1499,9 +1877,6 @@ class CalculatorEngine {
         this.pendingDelta = null;
         this.pendingPowerBase = null;
         this.awaitingRate = false;
-        this.awaitingK = false;
-        this.kInitialValue = null;
-        this.kInitialFromDisplay = false;
         this.costValue = null;
         this.sellValue = null;
         this.markupPercent = 0;
@@ -1509,6 +1884,7 @@ class CalculatorEngine {
         this.lastOperation = null;
         this.gtPending = false;
         this.addModeBuffer = "";
+        this._resetExpressionState();
         
         this.entries = []; // Clear history
         
@@ -1533,22 +1909,6 @@ class CalculatorEngine {
             this.awaitingRate = true;
             this.currentInput = String(this.taxRate);
             this.isNewSequence = true;
-            this.onDisplayUpdate(this.currentInput);
-            return;
-        }
-
-        if (key === 'K') {
-            const displayVal = parseFloat(this.currentInput);
-            if (!isNaN(displayVal) && this.currentInput !== "0") {
-                this.kInitialValue = String(displayVal);
-                this.kInitialFromDisplay = true;
-            } else {
-                this.kInitialValue = this.constantK !== null ? String(this.constantK) : "0";
-                this.kInitialFromDisplay = false;
-            }
-            this.currentInput = this.kInitialValue;
-            this.isNewSequence = true;
-            this.awaitingK = true;
             this.onDisplayUpdate(this.currentInput);
             return;
         }
@@ -1729,7 +2089,9 @@ class CalculatorEngine {
     // --- HISTORY / TAPE ---
     _addHistoryEntry(entry) {
         // Enforce validations
-        if (entry.val === undefined || isNaN(entry.val)) return;
+        if (entry.val === undefined || entry.val === null) return;
+        if (typeof entry.val === 'number' && isNaN(entry.val)) return;
+        if (typeof entry.val === 'string' && entry.val.trim() === '') return;
         
         // Enrich entry
         if (!entry.timestamp) entry.timestamp = Date.now();
