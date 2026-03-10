@@ -29,6 +29,7 @@ export function initTabs(container, options = {}) {
       const active = panel.dataset.tabPanel === tabId;
       panel.classList.toggle('active', active);
     });
+    document.dispatchEvent(new CustomEvent('app:tab-changed', { detail: { tabId } }));
     if (options.onTabChange) options.onTabChange(tabId);
   };
 

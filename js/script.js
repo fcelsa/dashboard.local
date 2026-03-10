@@ -4,7 +4,6 @@ import { isHoliday } from './time-date-manager.js';
 import {
   registerCalendarView,
   initCalendarViews,
-  setCalendarView,
   getCalendarView,
 } from './ui/calendar-views.js';
 import { getTheme } from './ui/theme.js';
@@ -26,15 +25,23 @@ const fxKeyForm = document.getElementById("fx-key-form");
 const fxKeyInput = document.getElementById("freecurrency-key");
 const fxKeyStatus = document.getElementById("fx-key-status");
 const fxIndicator = document.getElementById("fx-api-status");
+const networkStatusEl = document.getElementById("network-status");
 const fxKeyClearBtn = document.getElementById("clear-freecurrency-key");
+const fxKeyToggleBtn = document.getElementById("toggle-freecurrency-key");
+const fxKeyCopyBtn = document.getElementById("copy-freecurrency-key");
 const gistKeyForm = document.getElementById("gist-key-form");
 const gistKeyInput = document.getElementById("gist-token");
 const gistKeyStatus = document.getElementById("gist-key-status");
 const gistKeyClearBtn = document.getElementById("clear-gist-token");
+const gistKeyToggleBtn = document.getElementById("toggle-gist-token");
+const gistKeyCopyBtn = document.getElementById("copy-gist-token");
 const gistUrlInput = document.getElementById("gist-url");
 const gistUrlStatus = document.getElementById("gist-url-status");
 const saveGistUrlBtn = document.getElementById("save-gist-url");
 const clearGistUrlBtn = document.getElementById("clear-gist-url");
+const gistUrlToggleBtn = document.getElementById("toggle-gist-url");
+const gistUrlCopyBtn = document.getElementById("copy-gist-url");
+const settingsRuntimeGridEl = document.getElementById("settings-runtime-grid");
 const calendarContextMenu = document.createElement("div");
 
 let fxHistory = null;
@@ -42,7 +49,6 @@ let fxChartSize = { width: 0, height: 0 };
 let fxMiniSize = { width: 0, height: 0 };
 let fxChartEntries = [];
 let fxHoverIndex = null;
-let freeCurrencyKey = null;
 let gistToken = null;
 const fxSessionKey = "fxLatestSession";
 const freeCurrencyCookieKey = "freeCurrencyApiKey";
@@ -589,12 +595,31 @@ function formatTime(date) {
   )}`;
 }
 
+function formatElapsedCompact(fromTimestamp) {
+  if (!fromTimestamp) return null;
+  const elapsedMs = Math.max(0, Date.now() - fromTimestamp);
+  const totalMinutes = Math.floor(elapsedMs / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours <= 0) return `${minutes}m`;
+  return `${hours}h ${minutes}m`;
+}
+
 // --- FX HELPERS / API KEYS ---
 // --- FX CACHE (SESSION) ---
 
 function getFreeCurrencyCookieKey() {
-  const key = getCookie(freeCurrencyCookieKey);
-  return key ? key.trim() : null;
+  const persistedKey = getCookie(freeCurrencyCookieKey);
+  if (persistedKey) return persistedKey.trim();
+
+  const sessionKey = sessionStorage.getItem(freeCurrencyCookieKey);
+  if (!sessionKey) return null;
+
+  const trimmedSessionKey = sessionKey.trim();
+  const oneYear = 60 * 60 * 24 * 365;
+  setCookie(freeCurrencyCookieKey, trimmedSessionKey, oneYear);
+  sessionStorage.removeItem(freeCurrencyCookieKey);
+  return trimmedSessionKey;
 }
 
 function setFreeCurrencyCookieKey(key) {
@@ -605,6 +630,7 @@ function setFreeCurrencyCookieKey(key) {
 
 function clearFreeCurrencyCookieKey() {
   deleteCookie(freeCurrencyCookieKey);
+  sessionStorage.removeItem(freeCurrencyCookieKey);
 }
 
 function maskApiKey(key) {
@@ -615,11 +641,93 @@ function maskApiKey(key) {
   return `${head}••••${tail}`;
 }
 
+function syncSensitiveInputValue(inputEl, storedValue) {
+  if (!inputEl) return;
+  const isEditingThisField = document.activeElement === inputEl && inputEl.value.trim();
+  if (isEditingThisField) return;
+  inputEl.value = storedValue || "";
+  if (inputEl.type !== "password" && !storedValue) {
+    inputEl.type = "password";
+  }
+}
+
+function syncRevealButtonState(buttonEl, inputEl) {
+  if (!buttonEl || !inputEl) return;
+  const isVisible = inputEl.type === "text";
+  buttonEl.textContent = isVisible ? "🙈" : "👁";
+  buttonEl.title = isVisible ? "Nascondi" : "Mostra";
+  buttonEl.setAttribute("aria-label", isVisible ? "Nascondi valore" : "Mostra valore");
+}
+
+function setupRevealToggle(buttonEl, inputEl) {
+  if (!buttonEl || !inputEl) return;
+  syncRevealButtonState(buttonEl, inputEl);
+  buttonEl.addEventListener("click", () => {
+    inputEl.type = inputEl.type === "password" ? "text" : "password";
+    syncRevealButtonState(buttonEl, inputEl);
+  });
+}
+
+function setupCopyButton(buttonEl, getValue, statusEl, successText) {
+  if (!buttonEl) return;
+  buttonEl.addEventListener("click", async () => {
+    const value = typeof getValue === "function" ? String(getValue() || "").trim() : "";
+    if (!value) {
+      if (statusEl) statusEl.textContent = "Nessun valore da copiare.";
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(value);
+      if (statusEl) statusEl.textContent = successText;
+    } catch {
+      if (statusEl) statusEl.textContent = "Copia non disponibile in questa sessione.";
+    }
+  });
+}
+
+function renderSettingsRuntime(rows) {
+  if (!settingsRuntimeGridEl) return;
+  settingsRuntimeGridEl.innerHTML = rows
+    .map(
+      ({ key, value }) =>
+        `<div class="runtime-row"><span class="runtime-key">${key}</span><span class="runtime-value">${value}</span></div>`
+    )
+    .join("");
+}
+
+function getExecutionModeLabel() {
+  if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+    return "Dev server";
+  }
+  if (window.location.protocol === "file:") {
+    return "File locale";
+  }
+  return "Browser";
+}
+
+async function updateSettingsRuntimeInfo() {
+  const rows = [
+    { key: "Modalità", value: getExecutionModeLabel() },
+    { key: "Runtime", value: "Browser" },
+    { key: "Piattaforma", value: navigator.platform || navigator.userAgent || "n/d" },
+    { key: "Origin", value: window.location.origin || "n/d" },
+    { key: "Storage dati", value: "Cookie + IndexedDB (scope per origin)" },
+    {
+      key: "Sessione",
+      value: `cookies ${document.cookie ? document.cookie.split(";").filter(Boolean).length : 0}, indexedDB ${
+        "indexedDB" in window ? "ok" : "n/a"
+      }`,
+    },
+  ];
+  renderSettingsRuntime(rows);
+}
+
 function updateFxKeyStatus() {
   const stored = getFreeCurrencyCookieKey();
+  syncSensitiveInputValue(fxKeyInput, stored);
   if (fxKeyStatus) {
     if (stored) {
-      fxKeyStatus.textContent = `Chiave salvata: ${maskApiKey(stored)}`;
+      fxKeyStatus.textContent = `Chiave salvata (${maskApiKey(stored)}).`;
     } else {
       fxKeyStatus.textContent = "Nessuna chiave salvata.";
     }
@@ -646,12 +754,14 @@ function clearGistCookieKey() {
 }
 
 function updateGistKeyStatus() {
-  if (!gistKeyStatus) return;
   const stored = getGistCookieKey();
-  if (stored) {
-    gistKeyStatus.textContent = `Token salvato: ${maskApiKey(stored)}`;
-  } else {
-    gistKeyStatus.textContent = "Nessun token salvato.";
+  syncSensitiveInputValue(gistKeyInput, stored);
+  if (gistKeyStatus) {
+    if (stored) {
+      gistKeyStatus.textContent = `Token salvato (${maskApiKey(stored)}).`;
+    } else {
+      gistKeyStatus.textContent = "Nessun token salvato.";
+    }
   }
 }
 
@@ -672,13 +782,14 @@ function clearGistUrlCookie() {
 }
 
 function updateGistUrlStatus() {
-  if (!gistUrlStatus) return;
   const stored = getGistUrlCookie();
-  if (stored) {
-    const displayUrl = stored.length > 50 ? `${stored.substring(0, 50)}...` : stored;
-    gistUrlStatus.textContent = `✓ Gist URL: ${displayUrl}`;
-  } else {
-    gistUrlStatus.textContent = "Nessun URL salvato.";
+  syncSensitiveInputValue(gistUrlInput, stored);
+  if (gistUrlStatus) {
+    if (stored) {
+      gistUrlStatus.textContent = "URL Gist salvato.";
+    } else {
+      gistUrlStatus.textContent = "Nessun URL salvato.";
+    }
   }
 }
 
@@ -706,82 +817,60 @@ function isCacheFresh(payload) {
   return ageMs < 60 * 60 * 1000;
 }
 
-// --- FX API KEYS ---
-async function loadFreeCurrencyKey() {
-  if (freeCurrencyKey) return freeCurrencyKey;
-  try {
-    const stored = localStorage.getItem("freeCurrencyKey");
-    if (stored) {
-      freeCurrencyKey = stored.trim();
-      return freeCurrencyKey;
-    }
-
-    if (window?.FREECURRENCY_API_KEY) {
-      freeCurrencyKey = String(window.FREECURRENCY_API_KEY).trim();
-      return freeCurrencyKey;
-    }
-
-    if (location.protocol === "file:") {
-      freeCurrencyKey = DEFAULT_FREECURRENCY_KEY;
-      return freeCurrencyKey;
-    }
-
-    const response = await fetch("api-keys");
-    if (!response.ok) return null;
-    const text = await response.text();
-    const lines = text.split("\n");
-    const match = lines.find((line) => line.includes("freecurrencyapi.com"));
-    if (!match) return null;
-    const parts = match.split("=");
-    if (parts.length < 2) return null;
-    freeCurrencyKey = parts[1].trim();
-    return freeCurrencyKey;
-  } catch (error) {
-    console.error(error);
-    return null;
+function getBestLocalFxSnapshot() {
+  const cached = getCachedSessionRate();
+  if (cached && Number.isFinite(cached.rate) && Number.isFinite(cached.ts)) {
+    return { rate: cached.rate, ts: cached.ts };
   }
+
+  const intraday = getIntradayCache();
+  if (!intraday?.points?.length) return null;
+  const lastPoint = intraday.points[intraday.points.length - 1];
+  if (!lastPoint || !Number.isFinite(lastPoint.r)) return null;
+  const ts = new Date(lastPoint.t).getTime();
+  if (!Number.isFinite(ts)) return null;
+  return { rate: lastPoint.r, ts };
 }
 
-// Generic loader for API keys stored in the `api-keys` file or provided via window/localStorage.
-async function loadApiKey(domain) {
-  try {
-    // Cookie override (per-user)
-    if (domain.toLowerCase().includes("freecurrency")) {
-      const cookieKey = getFreeCurrencyCookieKey();
-      if (cookieKey) return cookieKey;
-    }
+function updateNetworkStatus(lastDataTimestamp = null) {
+  if (!networkStatusEl) return;
+  const online = navigator.onLine;
+  networkStatusEl.classList.toggle("online", online);
+  networkStatusEl.classList.toggle("offline", !online);
 
-    // First try reading api-keys file (preferred on localhost/http(s))
-    try {
-      const resp = await fetch('api-keys');
-      if (resp && resp.ok) {
-        const text = await resp.text();
-        const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-        // Look for a line referencing the domain (e.g. freecurrencyapi.com)
-        const match = lines.find(line => line.toLowerCase().includes(domain.toLowerCase()));
-        if (match) {
-          const parts = match.split('=');
-          if (parts.length >= 2) return parts[1].trim();
-        }
-      }
-    } catch (err) {
-      // ignore fetch errors (file:// or network); fallthrough to other fallbacks
-    }
-
-    // localStorage overrides (keyed by domain)
-    const local = localStorage.getItem(`apiKey:${domain}`);
-    if (local) return local.trim();
-
-    // Window globals fallback (only FreeCurrencyAPI supported)
-    if (domain.includes('freecurrency') && window?.FREECURRENCY_API_KEY) return String(window.FREECURRENCY_API_KEY).trim();
-
-    // No hardcoded fallback; if nothing found, return null so caller can handle missing key
-    return null;
-  } catch (err) {
-    // Could be file:// protocol or fetch blocked; fallback to null
-    return null;
+  if (online) {
+    networkStatusEl.textContent = "Online";
+    return;
   }
+
+  if (!lastDataTimestamp) {
+    networkStatusEl.textContent = "Offline · no data";
+    return;
+  }
+
+  const age = formatElapsedCompact(lastDataTimestamp);
+  networkStatusEl.textContent = age ? `Offline · dati vecchi ${age}` : "Offline · dati vecchi";
 }
+
+function applyFxSnapshot(snapshot, stale = false) {
+  if (!snapshot || !Number.isFinite(snapshot.rate)) return false;
+  const when = Number.isFinite(snapshot.ts) ? new Date(snapshot.ts) : new Date();
+  fxPriceEl.textContent = snapshot.rate.toFixed(4);
+
+  const staleSuffix = stale
+    ? ` · dati vecchi ${formatElapsedCompact(when.getTime()) || ""}`.trimEnd()
+    : "";
+  fxUpdatedEl.textContent = `Aggiornamento: ${formatDate(when)} ${formatTime(when)}${staleSuffix}`;
+
+  if (fxStatusEl) {
+    fxStatusEl.classList.toggle("cached", stale);
+  }
+  addIntradayPoint(snapshot.rate);
+  updateNetworkStatus(when.getTime());
+  return true;
+}
+
+// --- FX API KEY (SESSIONE UTENTE) ---
 
 // --- FX PAYLOAD PARSING ---
 // Extract a numeric USD rate from multiple provider payload shapes
@@ -815,6 +904,22 @@ function extractRateFromPayload(payload) {
   if (payload.result && typeof payload.result.USD !== 'undefined') return parseFloat(payload.result.USD);
   // Direct USD field
   if (typeof payload.USD !== 'undefined') return parseFloat(payload.USD);
+  return null;
+}
+
+function extractTimestampFromPayload(payload) {
+  if (!payload) return null;
+
+  if (typeof payload.meta?.last_updated_at === "string") {
+    const parsedMeta = new Date(payload.meta.last_updated_at).getTime();
+    if (Number.isFinite(parsedMeta)) return parsedMeta;
+  }
+
+  if (typeof payload.date === "string") {
+    const parsedDate = new Date(`${payload.date}T12:00:00`).getTime();
+    if (Number.isFinite(parsedDate)) return parsedDate;
+  }
+
   return null;
 }
 
@@ -860,7 +965,7 @@ function getHistoryRange() {
   const end = new Date();
   const start = new Date();
   start.setFullYear(end.getFullYear() - 1);
-  return { start: formatDate(start), end: formatDate(end) };
+  return { start: formatDateLocal(start), end: formatDateLocal(end) };
 }
 
 function readCachedHistory() {
@@ -907,6 +1012,10 @@ async function fetchFxHistory() {
     updateFxTrend();
   } catch (error) {
     console.error(error);
+    if (fxChangeEl) {
+      fxChangeEl.textContent = "Grafico FX non disponibile";
+      fxChangeEl.classList.add("negative");
+    }
   }
 }
 
@@ -929,57 +1038,74 @@ function ensureFxHistory() {
 async function fetchFxLatest() {
   if (!fxPriceEl || !fxChangeEl || !fxUpdatedEl) return;
   try {
-    if (fxStatusEl) fxStatusEl.classList.remove("cached");
+    const localSnapshot = getBestLocalFxSnapshot();
+    const freeKey = getFreeCurrencyCookieKey();
+    updateNetworkStatus(localSnapshot?.ts || null);
 
-    // Check local session cache (1 hour duration)
-    const cached = getCachedSessionRate();
-    if (cached && isCacheFresh(cached)) {
-      fxPriceEl.textContent = cached.rate.toFixed(4);
-      const cachedDate = new Date(cached.ts);
-      fxUpdatedEl.textContent = `Aggiornamento: ${formatDate(cachedDate)} ${formatTime(
-        cachedDate
-      )}`;
-      if (fxStatusEl) fxStatusEl.classList.add("cached");
-      addIntradayPoint(cached.rate);
+    if (!navigator.onLine) {
+      if (!applyFxSnapshot(localSnapshot, true) && fxUpdatedEl) {
+        fxUpdatedEl.textContent = "Aggiornamento: offline, nessun dato locale";
+      }
       return;
     }
-    // Prefer FreeCurrencyAPI (key stored in `api-keys`) - called only if cookie expired
+
+    if (fxStatusEl) fxStatusEl.classList.remove("cached");
+
     let rate = null;
-    try {
-      // Try FreeCurrencyAPI first (key from api-keys)
-      const freeKey = await loadApiKey('freecurrencyapi.com');
-      if (freeKey) {
-        const url = `https://api.freecurrencyapi.com/v1/latest?apikey=${encodeURIComponent(
-          freeKey
-        )}&base_currency=EUR&currencies=USD`;
-        try {
-          const resp = await fetch(url);
-          if (resp.ok) {
-            const payload = await resp.json();
-            rate = extractRateFromPayload(payload);
-          } else {
-            console.warn('FreeCurrencyAPI responded', resp.status);
-          }
-        } catch (err) {
-          console.warn('FreeCurrencyAPI fetch failed', err);
+    let timestamp = null;
+
+    if (freeKey) {
+      const cached = getCachedSessionRate();
+      if (cached && isCacheFresh(cached)) {
+        applyFxSnapshot({ rate: cached.rate, ts: cached.ts }, true);
+        return;
+      }
+
+      const freeUrl = `https://api.freecurrencyapi.com/v1/latest?apikey=${encodeURIComponent(
+        freeKey
+      )}&base_currency=EUR&currencies=USD`;
+      try {
+        const freeResp = await fetch(freeUrl);
+        if (freeResp.ok) {
+          const freePayload = await freeResp.json();
+          rate = extractRateFromPayload(freePayload);
+          timestamp = extractTimestampFromPayload(freePayload);
+        } else {
+          console.warn("FreeCurrencyAPI responded", freeResp.status);
         }
+      } catch (err) {
+        console.warn("FreeCurrencyAPI fetch failed", err);
       }
-
-      if (!rate || isNaN(rate)) {
-        console.warn('No rate retrieved from FreeCurrencyAPI');
-        return; // nothing to show
-      }
-
-      setCachedSessionRate(rate);
-      fxPriceEl.textContent = rate.toFixed(4);
-      fxUpdatedEl.textContent = `Aggiornamento: ${formatDate(new Date())} ${formatTime(new Date())}`;
-      if (fxStatusEl) fxStatusEl.classList.remove('cached');
-      addIntradayPoint(rate);
-    } catch (err) {
-      console.error(err);
     }
+
+    if (!Number.isFinite(rate)) {
+      const frankfurterUrl = "https://api.frankfurter.app/latest?from=EUR&to=USD";
+      try {
+        const frankResp = await fetch(frankfurterUrl);
+        if (frankResp.ok) {
+          const frankPayload = await frankResp.json();
+          rate = extractRateFromPayload(frankPayload);
+          timestamp = extractTimestampFromPayload(frankPayload);
+        } else {
+          console.warn("Frankfurter responded", frankResp.status);
+        }
+      } catch (err) {
+        console.warn("Frankfurter fetch failed", err);
+      }
+    }
+
+    if (!Number.isFinite(rate)) {
+      applyFxSnapshot(localSnapshot, true);
+      return;
+    }
+
+    const snapshotTs = Number.isFinite(timestamp) ? timestamp : Date.now();
+    setCachedSessionRate(rate);
+    applyFxSnapshot({ rate, ts: snapshotTs }, false);
   } catch (error) {
     console.error(error);
+    const localSnapshot = getBestLocalFxSnapshot();
+    applyFxSnapshot(localSnapshot, true);
   }
 }
 
@@ -1161,14 +1287,13 @@ function drawFxChart() {
   ctx.textAlign = "right";
   ctx.fillText(max.toFixed(4), width - padding, padding - 6 * ratio);
 
-  ctx.textAlign = "center";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
   ctx.fillText(
-    `Media 7g: ${weekAvg.toFixed(4)}  ·  Media 30g: ${monthAvg.toFixed(4)}`,
-    width / 2,
-    padding - 6 * ratio
+    `Medie: 7gg ${weekAvg.toFixed(4)} · 30gg ${monthAvg.toFixed(4)} · periodo ${avg.toFixed(4)}`,
+    padding,
+    Math.max(2 * ratio, padding - 14 * ratio)
   );
-
-  ctx.fillText(`Media periodo: ${avg.toFixed(4)}`, width / 2, avgY - 6 * ratio);
 }
 
 function setupFxChartTooltip() {
@@ -1370,6 +1495,13 @@ function initDashboard() {
     });
   }
 
+  const tradingPanel = document.getElementById("trading-panel");
+  if (tradingPanel) {
+    tradingPanel.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
+  }
+
   // --- Date Display & Format Menu ---
   const dateDisplayEl = document.getElementById("date-display");
   if (dateDisplayEl) {
@@ -1442,6 +1574,23 @@ function initDashboard() {
     });
   }
 
+  window.addEventListener("online", () => {
+    updateNetworkStatus(getBestLocalFxSnapshot()?.ts || null);
+    fetchFxLatest();
+  });
+
+  window.addEventListener("offline", () => {
+    const snapshot = getBestLocalFxSnapshot();
+    updateNetworkStatus(snapshot?.ts || null);
+    applyFxSnapshot(snapshot, true);
+  });
+
+  setInterval(() => {
+    if (!navigator.onLine) {
+      updateNetworkStatus(getBestLocalFxSnapshot()?.ts || null);
+    }
+  }, 60000);
+
   // Tabs are now initialised in main.js via tabs.js module
 
   if (fxKeyForm) {
@@ -1453,8 +1602,6 @@ function initDashboard() {
         return;
       }
       setFreeCurrencyCookieKey(value);
-      freeCurrencyKey = value;
-      if (fxKeyInput) fxKeyInput.value = "";
       updateFxKeyStatus();
     });
   }
@@ -1462,7 +1609,6 @@ function initDashboard() {
   if (fxKeyClearBtn) {
     fxKeyClearBtn.addEventListener("click", () => {
       clearFreeCurrencyCookieKey();
-      freeCurrencyKey = null;
       updateFxKeyStatus();
     });
   }
@@ -1477,7 +1623,6 @@ function initDashboard() {
       }
       setGistCookieKey(value);
       gistToken = value;
-      if (gistKeyInput) gistKeyInput.value = "";
       updateGistKeyStatus();
     });
   }
@@ -1498,7 +1643,6 @@ function initDashboard() {
         return;
       }
       setGistUrlCookie(value);
-      if (gistUrlInput) gistUrlInput.value = "";
       updateGistUrlStatus();
     });
   }
@@ -1510,9 +1654,34 @@ function initDashboard() {
     });
   }
 
+  setupRevealToggle(fxKeyToggleBtn, fxKeyInput);
+  setupRevealToggle(gistKeyToggleBtn, gistKeyInput);
+  setupRevealToggle(gistUrlToggleBtn, gistUrlInput);
+
+  setupCopyButton(
+    fxKeyCopyBtn,
+    () => getFreeCurrencyCookieKey() || fxKeyInput?.value,
+    fxKeyStatus,
+    "Chiave FX copiata."
+  );
+  setupCopyButton(
+    gistKeyCopyBtn,
+    () => getGistCookieKey() || gistKeyInput?.value,
+    gistKeyStatus,
+    "Token GitHub copiato."
+  );
+  setupCopyButton(
+    gistUrlCopyBtn,
+    () => getGistUrlCookie() || gistUrlInput?.value,
+    gistUrlStatus,
+    "URL Gist copiato."
+  );
+
   updateFxKeyStatus();
   updateGistKeyStatus();
   updateGistUrlStatus();
+  updateNetworkStatus(getBestLocalFxSnapshot()?.ts || null);
+  updateSettingsRuntimeInfo();
 }
 
 export { initDashboard };

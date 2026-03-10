@@ -12,7 +12,6 @@
 - ✅ Removed all `window.*` global exports (`window.CalculatorEngine`, `window.updateMoonPhase`)
 - ✅ Removed CJS/browser bridge in `calculator-engine.js`
 - ✅ Removed IIFE wrapper in `calc-sheet.js` (replaced with `initCalcSheet()`)
-- ✅ Added `package.json` (`"type": "module"`)
 
 ## Cookie/Storage Extraction — Completed @2026-02-07
 - ✅ Created `js/utils/cookies.js` with `getCookie`, `setCookie`, `deleteCookie`

@@ -3,24 +3,20 @@ import { getCookie, setCookie } from './utils/cookies.js';
 import {
   initCalcHistoryDB,
   saveCurrentState,
-  loadCurrentState,
-  addHistorySnapshot,
-  getAllHistorySnapshots,
+    loadCurrentState,
   formatTimestamp,
   saveUserSnapshot,
   getAllUserSnapshots,
   getUserSnapshot,
   deleteUserSnapshot,
-  getUserSnapshotCount,
-  clearAllHistory
+    getUserSnapshotCount
 } from './utils/calc-history-db.js';
 import {
-  getGistToken,
   getDashboardState,
-  restoreDashboardState,
   saveToGistUrl,
   loadFromGistUrl
 } from './utils/dashboard-sync.js';
+import { applyRounding } from './utils/number-utils.js';
 
 document.addEventListener("DOMContentLoaded", async () => {
   try {
@@ -118,7 +114,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     // --- UI STATE ---
     let isTextMode = false; 
     let textModeBuffer = ""; 
-    let lastCETime = 0;
     let errorState = false;
     let vfdOffTimeout = null;
     let paperResetTimeout = null;
@@ -133,9 +128,102 @@ document.addEventListener("DOMContentLoaded", async () => {
     let taxRateHoldTriggered = false;
     let suppressTaxPlusClick = false;
     // --- FOCUS STATE ---
-    const isCalculatorFocused = () => Boolean(
-        calculatorWrapper && (calculatorWrapper.matches(':hover') || calculatorWrapper.matches(':focus-within'))
-    );
+    const isCalculatorTabActive = () => {
+        const calculatorTab = document.querySelector('[data-tab-panel="calculator"]');
+        return Boolean(calculatorTab && calculatorTab.classList.contains('active'));
+    };
+
+    const hasCalculatorKeyboardFocus = () => {
+        if (!calculatorWrapper) return false;
+        const activeEl = document.activeElement;
+        return activeEl === calculatorWrapper || calculatorWrapper.matches(':focus-within');
+    };
+
+    const isCalculatorFocused = () => {
+        if (!calculatorWrapper) return false;
+        if (!isCalculatorTabActive()) return false;
+        return hasCalculatorKeyboardFocus();
+    };
+
+    const FOCUS_DEBUG = true;
+
+    const describeElement = (el) => {
+        if (!el) return 'null';
+        const id = el.id ? `#${el.id}` : '';
+        const className = typeof el.className === 'string' && el.className.trim()
+            ? `.${el.className.trim().split(/\s+/).join('.')}`
+            : '';
+        return `${el.tagName}${id}${className}`;
+    };
+
+    const logFocusDebug = (label, extra = {}) => {
+        if (!FOCUS_DEBUG || !window.__focusDebugEnabled) return;
+        const payload = {
+            tabActive: isCalculatorTabActive(),
+            calculatorFocused: hasCalculatorKeyboardFocus(),
+            activeElement: describeElement(document.activeElement),
+            ...extra
+        };
+        console.debug('[calculator-focus]', label, payload);
+        if (window.__focusDebugLog) {
+            window.__focusDebugLog('calculator-focus', label, payload);
+        }
+    };
+
+    function syncCalculatorFocusLed() {
+        if (!calculatorWrapper) return;
+        const isOn = isCalculatorTabActive() && hasCalculatorKeyboardFocus();
+        calculatorWrapper.classList.toggle('is-keyboard-focus', isOn);
+    }
+
+    function focusCalculatorWrapper() {
+        if (!calculatorWrapper || !isCalculatorTabActive()) {
+            logFocusDebug('focusCalculatorWrapper:skip');
+            return;
+        }
+        logFocusDebug('focusCalculatorWrapper:before');
+        try {
+            calculatorWrapper.focus({ preventScroll: true });
+        } catch {
+            calculatorWrapper.focus();
+        }
+        syncCalculatorFocusLed();
+        logFocusDebug('focusCalculatorWrapper:after');
+    }
+
+    function focusCalculatorWrapperDeferred(delayMs = 0) {
+        if (!calculatorWrapper) return;
+        setTimeout(() => {
+            if (!isCalculatorTabActive()) return;
+            requestAnimationFrame(() => focusCalculatorWrapper());
+        }, delayMs);
+    }
+
+    function hasEditableFocus() {
+        const activeEl = document.activeElement;
+        if (!activeEl) return false;
+        if (activeEl === calculatorWrapper || activeEl === document.body || activeEl === document.documentElement) {
+            return false;
+        }
+        const tagName = activeEl.tagName;
+        return (
+            tagName === 'INPUT' ||
+            tagName === 'TEXTAREA' ||
+            tagName === 'SELECT' ||
+            activeEl.isContentEditable
+        );
+    }
+
+    if (calculatorWrapper) {
+        calculatorWrapper.addEventListener('focusin', () => {
+            syncCalculatorFocusLed();
+            logFocusDebug('wrapper:focusin');
+        });
+        calculatorWrapper.addEventListener('focusout', () => {
+            setTimeout(syncCalculatorFocusLed, 0);
+            logFocusDebug('wrapper:focusout');
+        });
+    }
 
     // --- GITHUB SYNC UI ---
     const gistLoadBtn = document.getElementById("gist-load-btn");
@@ -338,6 +426,73 @@ document.addEventListener("DOMContentLoaded", async () => {
         return parts.join(',');
     }
 
+    // --- Persistence: save on close, restore on open ---
+    const SESSION_SAVE_DEBOUNCE_MS = 800;
+    let persistTimer = null;
+
+    function persistCurrentStateSync() {
+        try {
+            const snap = engine.getStateSnapshot();
+            localStorage.setItem('logos_current_state_cache', JSON.stringify(snap));
+            // Best-effort async persistence to IndexedDB (may not complete on unload)
+            saveCurrentState(snap).catch(() => {});
+        } catch (err) {
+            console.warn('persistCurrentStateSync failed', err);
+        }
+    }
+
+    function scheduleSessionStateSave() {
+        if (persistTimer) clearTimeout(persistTimer);
+        persistTimer = setTimeout(async () => {
+            try {
+                const snap = engine.getStateSnapshot();
+                localStorage.setItem('logos_current_state_cache', JSON.stringify(snap));
+                await saveCurrentState(snap);
+            } catch (err) {
+                console.warn('scheduleSessionStateSave failed', err);
+            }
+        }, SESSION_SAVE_DEBOUNCE_MS);
+    }
+
+    // Browser/tab close - synchronous fallback
+    window.addEventListener('beforeunload', () => {
+        persistCurrentStateSync();
+    });
+
+    // Covers bfcache, tab switch, and mobile backgrounding in hosted browsers.
+    // @2026-03-10
+    window.addEventListener('pagehide', () => {
+        persistCurrentStateSync();
+    });
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+            persistCurrentStateSync();
+        }
+    });
+
+    // On startup: prefer IndexedDB, fallback to localStorage cache
+    (async function tryRestoreSavedState() {
+        try {
+            const saved = await loadCurrentState();
+            if (saved) {
+                engine.restoreStateSnapshot(saved);
+                return;
+            }
+        } catch (err) {
+            // ignore and fallback to cache
+        }
+
+        try {
+            const raw = localStorage.getItem('logos_current_state_cache');
+            if (raw) {
+                const snap = JSON.parse(raw);
+                engine.restoreStateSnapshot(snap);
+            }
+        } catch (err) {
+            // ignore
+        }
+    })();
+
     engine.onMemoryUpdate = (memory) => {
         if (iconMem) iconMem.className = memory.hasMemory ? "vfd-icon on" : "vfd-icon off";
         if (!vfdStack) return;
@@ -408,8 +563,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         }, 500);
     }
 
-    engine.onBeforeClearAll = handleBeforeClearAll;
-
     // --- TAPE VIEW ---
     keys.forEach((btn) => {
         const dataKey = btn.getAttribute("data-key");
@@ -423,6 +576,39 @@ document.addEventListener("DOMContentLoaded", async () => {
         const buttons = keyButtonsMap.get(action);
         if (!buttons) return;
         buttons.forEach((btn) => btn.classList.toggle("active", active));
+    }
+
+    const transientKeyboardActions = new Set(['#', 'S_SAVE', 'S_LOAD']);
+    let lastKeyboardActiveAction = null;
+
+    function activateKeyboardKey(action, keyboardEvent) {
+        if (!action) return;
+
+        const hasModifier = !!(keyboardEvent?.altKey || keyboardEvent?.ctrlKey || keyboardEvent?.metaKey);
+        const useTransient = transientKeyboardActions.has(action) || hasModifier;
+
+        setKeyActive(action, true);
+
+        if (useTransient) {
+            setTimeout(() => setKeyActive(action, false), 90);
+            return;
+        }
+
+        lastKeyboardActiveAction = action;
+    }
+
+    function releaseKeyboardKey(action) {
+        if (action) {
+            setKeyActive(action, false);
+            if (lastKeyboardActiveAction === action) {
+                lastKeyboardActiveAction = null;
+            }
+        }
+
+        if (lastKeyboardActiveAction && lastKeyboardActiveAction !== action) {
+            setKeyActive(lastKeyboardActiveAction, false);
+            lastKeyboardActiveAction = null;
+        }
     }
 
     const businessKeys = new Set(['COST', 'SELL', 'MARGIN', 'MARKUP', 'TAX+', 'TAX-']);
@@ -541,39 +727,10 @@ document.addEventListener("DOMContentLoaded", async () => {
             row.classList.add("tape-operand");
         }
         
-        // Alignment
-        /* 
-           Logic update: 
-           - Operations (x, /, =) are LEFT aligned (input operand + symbol)
-           - Results (no symbol but key is =) are LEFT aligned (actually usually Right aligned?) 
-             Mult:
-             10 x   (Left)
-             5 =    (Left)
-             50     (Right - Result)
-             
-             If key is x, ÷, = OR symbol is =, align LEFT.
-             CONST entry has key='CONST'.
-        */
-        // Special case: when printing the second operand as an input with symbol '='
-        // for an add/sub chain, we want it right-aligned so the symbol stays to the
-        // right of the number (matches user expectation). Detect this by looking
-        // at the last rendered row's symbol (if any).
-        let forcedAlignRightForEquals = false;
-        if (entry.key === '=' && entry.type === 'input') {
-            const lastRow = paperTape?.querySelector?.('.tape-row:last-child');
-            const lastSym = lastRow?.querySelector('.tape-symbol')?.textContent?.trim();
-            if (lastSym === '+' || lastSym === '-') {
-                forcedAlignRightForEquals = true;
-            }
-        }
-
+        // Tape rows are always right-aligned with a fixed operator slot.
+        // @2026-03-07
         if (isExpressionRow) {
-            row.classList.add("align-left", "tape-expression");
-        } else if (entry.symbol === '◇' || entry.symbol === 'S' || entry.symbol === 'T' || forcedAlignRightForEquals) {
-            row.classList.add("align-right");
-        } else if (['x', '÷', 'CONST'].includes(entry.key) || entry.symbol === '=') {
-            // Keep multiplication/division and explicit '=' result markers left aligned
-            row.classList.add("align-left");
+            row.classList.add("tape-expression", "align-right");
         } else {
             row.classList.add("align-right");
         }
@@ -583,35 +740,62 @@ document.addEventListener("DOMContentLoaded", async () => {
             row.classList.add("result-row");
         }
 
-        // Negative Color
-        const valNum = parseFloat(entry.val);
-        const pctNum = typeof entry.percentValue !== "undefined" ? parseFloat(entry.percentValue) : NaN;
-        const isNeg = (!isNaN(valNum) && valNum < 0) || (!isNaN(pctNum) && pctNum < 0) || entry.symbol === '-' || entry.symbol === 'TAX-';
-        if (isNeg) {
-            row.classList.add("negative");
-        }
-
         const valSpan = document.createElement("span");
         valSpan.className = "tape-val";
         
-        let displayVal = entry.val;
-        // If it's a number, format it
-           if (isExpressionRow) {
-               displayVal = String(entry.expression || entry.val || '');
-           } else if (typeof entry.val === 'number') {
-             displayVal = formatNumber(entry.val);
-        } else if (!isNaN(parseFloat(entry.val)) && entry.key !== '#') {
-             displayVal = formatNumber(entry.val);
+        // Apply negative color only to actual negative numbers
+        // @2026-03-07
+        const valNum = parseFloat(entry.val);
+        if (!isNaN(valNum) && valNum < 0) {
+            valSpan.classList.add("negative");
         }
         
-        if (entry.percentSuffix) {
-            displayVal = `${displayVal}%`;
+        // Dim color for percent input values
+        // @2026-03-07
+        if (entry.symbol === '%') {
+            valSpan.classList.add("tape-val-dim");
         }
-        if (entry.roundingFlag === 'up') {
-            displayVal = `${displayVal} ↑`;
-        } else if (entry.roundingFlag === 'down') {
-            displayVal = `${displayVal} ↓`;
+        
+        let displayVal = entry.val;
+        const isFloatResultLine = Boolean(
+            displaySettings?.isFloat &&
+            entry?.type === 'result' &&
+            hasMoreThanDecimals(entry?.val, 6)
+        );
+        const isResumedOperandLine = Boolean(
+            displaySettings?.isFloat &&
+            entry?.type === 'input' &&
+            entry?.isResumedOperand === true &&
+            (entry?.sourceContext === 'multDiv' || entry?.sourceContext === 'multDivEqual')
+        );
+
+        let floatPolicy = 'default';
+        if (isFloatResultLine) floatPolicy = 'result-full';
+        else if (isResumedOperandLine) floatPolicy = 'resumed-operand';
+
+        // If it's a number, format it
+        if (isExpressionRow) {
+            displayVal = String(entry.expression || entry.val || '');
+        } else if (typeof entry.val === 'number') {
+            displayVal = formatNumber(entry.val, { floatPolicy });
+        } else if (!isNaN(parseFloat(entry.val)) && entry.key !== '#') {
+            displayVal = formatNumber(entry.val, { floatPolicy });
         }
+        
+        const roundingMarker = entry.roundingFlag === 'up'
+            ? '↑'
+            : (entry.roundingFlag === 'down' ? '↓' : '');
+        const roundingTooltipValue = roundingMarker
+            ? formatRawValueForTooltip(entry.roundingRawValue)
+            : "";
+        
+        // Apply monospace padding for right-aligned rows (not expressions)
+        // @2026-03-07
+        if (!isExpressionRow && row.classList.contains('align-right')) {
+            const maxLen = getMaxTapeNumberLength();
+            displayVal = padNumberForAlignment(displayVal, maxLen);
+        }
+        
         valSpan.textContent = displayVal;
 
         // Make editable entries respond to double-click
@@ -623,8 +807,71 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         const symSpan = document.createElement("span");
         symSpan.className = "tape-symbol";
+        
+        // Apply negative color to minus operator symbol
+        // @2026-03-07
+        if (entry.symbol === '-') {
+            symSpan.classList.add("negative");
+        }
+        
+        // Abbreviate business symbols and apply smaller font
+        // @2026-03-07
+        const businessSymbols = {
+            'COST': 'CS',
+            'SELL': 'SL',
+            'MARGIN': 'MA',
+            'MARKUP': 'MU'
+        };
+        
+        let displaySymbol = entry.symbol || "";
+        if (businessSymbols[displaySymbol]) {
+            displaySymbol = businessSymbols[displaySymbol];
+            symSpan.classList.add("tape-symbol-business");
+        }
+        
         const lead = entry.leadSymbol ? `${entry.leadSymbol} ` : "";
-        symSpan.textContent = isExpressionRow ? '' : `${lead}${entry.symbol || ""}`;
+        const percentMarker = entry.percentSuffix ? '%' : '';
+        
+        let symbolText = "";
+        if (isExpressionRow) {
+            // Keep expression rows in the same 2-column tape layout using '='.
+            // @2026-03-07
+            symbolText = `${lead}${displaySymbol || '='}`;
+        } else {
+            symbolText = `${lead}${displaySymbol}`;
+        }
+        
+        // Build operator column content: symbol [rounding] [%]
+        // @2026-03-07
+        if (roundingMarker || percentMarker) {
+            if (symbolText.trim()) {
+                symSpan.appendChild(document.createTextNode(symbolText));
+                symSpan.appendChild(document.createTextNode(' '));
+            }
+            
+            if (roundingMarker) {
+                const roundingMarkerEl = document.createElement('span');
+                roundingMarkerEl.className = 'tape-rounding-marker';
+                roundingMarkerEl.textContent = roundingMarker;
+                if (roundingTooltipValue) {
+                    // Tooltip dedicated to arrow marker.
+                    // @2026-03-07
+                    roundingMarkerEl.title = roundingTooltipValue;
+                    roundingMarkerEl.dataset.tooltip = roundingTooltipValue;
+                    roundingMarkerEl.setAttribute('aria-label', `Non arrotondato: ${roundingTooltipValue}`);
+                }
+                symSpan.appendChild(roundingMarkerEl);
+                if (percentMarker) {
+                    symSpan.appendChild(document.createTextNode(' '));
+                }
+            }
+            
+            if (percentMarker) {
+                symSpan.appendChild(document.createTextNode(percentMarker));
+            }
+        } else {
+            symSpan.textContent = symbolText;
+        }
         if (entry.symbol === 'S' || entry.symbol === 'T') {
             symSpan.classList.add("tape-symbol-small");
         }
@@ -633,14 +880,38 @@ document.addEventListener("DOMContentLoaded", async () => {
         row.appendChild(valSpan);
         row.appendChild(symSpan);
 
-        if (!isExpressionRow && typeof entry.percentValue !== "undefined") {
-            const percentSpan = document.createElement("span");
-            percentSpan.className = "tape-percent";
-            const formatted = formatNumber(entry.percentValue);
-            percentSpan.textContent = ` | ${formatted}`;
-            row.appendChild(percentSpan);
-        }
         paperTape.appendChild(row);
+
+        // If percent calculation exists, show the calculated value on a new line
+        // @2026-03-07
+        if (!isExpressionRow && typeof entry.percentValue !== "undefined") {
+            const pctRow = document.createElement("div");
+            pctRow.className = "tape-row align-right";
+
+            const pctValSpan = document.createElement("span");
+            pctValSpan.className = "tape-val";
+            let pctFormatted = formatNumber(entry.percentValue, { floatPolicy });
+            
+            // Apply monospace padding
+            const maxLen = getMaxTapeNumberLength();
+            pctFormatted = padNumberForAlignment(pctFormatted, maxLen);
+            pctValSpan.textContent = pctFormatted;
+            
+            // Apply negative color only to actual negative percent values
+            // @2026-03-07
+            const pctNum = parseFloat(entry.percentValue);
+            if (!isNaN(pctNum) && pctNum < 0) {
+                pctValSpan.classList.add("negative");
+            }
+
+            const pctSymSpan = document.createElement("span");
+            pctSymSpan.className = "tape-symbol";
+            pctSymSpan.textContent = "=";
+
+            pctRow.appendChild(pctValSpan);
+            pctRow.appendChild(pctSymSpan);
+            paperTape.appendChild(pctRow);
+        }
         
         paperTape.scrollTop = paperTape.scrollHeight;
         updateTapeCount();
@@ -691,166 +962,156 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
     }
 
-    // --- HISTORY / SNAPSHOTS ---
-    const historyIconsContainer = document.getElementById("calc-history-icons");
-    
-    /**
-     * Save current state and history snapshots to indexedDB
-     */
-    async function saveAllStates() {
-        try {
-            const snapshot = engine.getStateSnapshot();
-            await saveCurrentState(snapshot);
-        } catch (err) {
-            console.error("Error saving calculator state:", err);
-        }
-    }
-
-    /**
-     * Update the history icons display
-     */
-    async function renderHistoryIcons() {
-        try {
-            if (!historyIconsContainer) return;
-            const snapshots = await getAllHistorySnapshots();
-            historyIconsContainer.innerHTML = "";
-            
-            snapshots.slice(0, 8).forEach((snapshot, index) => {
-                const icon = document.createElement("button");
-                icon.className = "calc-history-icon";
-                icon.type = "button";
-                
-                // Number: 1 is most recent, 8 is oldest
-                const progressiveNumber = index + 1;
-                const timestamp = formatTimestamp(snapshot.timestamp);
-                
-                // Build preview: show number of entries and last value
-                const entriesCount = snapshot.entries ? snapshot.entries.length : 0;
-                const lastValue = snapshot.accumulator || snapshot.grandTotal || snapshot.currentInput || "0";
-                const preview = `[${entriesCount} entries]\nAcc: ${lastValue}`;
-                
-                icon.textContent = `${progressiveNumber}`;
-                icon.setAttribute("data-tooltip", `${timestamp}\n${preview}`);
-                icon.dataset.snapshotId = snapshot.id;
-                icon.addEventListener("click", () => restoreFromHistory(snapshot.id));
-                
-                // Add tooltip event listeners
-                icon.addEventListener("mouseover", (e) => showTooltip(e));
-                icon.addEventListener("mouseleave", () => hideTooltip());
-                
-                historyIconsContainer.appendChild(icon);
-            });
-        } catch (err) {
-            console.error("Error rendering history icons:", err);
-        }
-    }
-
-    /**
-     * Show tooltip for history icon
-     */
-    function showTooltip(evt) {
-        const icon = evt.target.closest(".calc-history-icon");
-        if (!icon) return;
-        
-        const tooltipText = icon.getAttribute("data-tooltip");
-        if (!tooltipText) return;
-        
-        // Remove any existing tooltip
-        hideTooltip();
-        
-        // Create tooltip element
-        const tooltip = document.createElement("div");
-        tooltip.className = "calc-history-tooltip";
-        tooltip.textContent = tooltipText;
-        document.body.appendChild(tooltip);
-        
-        // Position tooltip
-        const rect = icon.getBoundingClientRect();
-        const tooltipRect = tooltip.getBoundingClientRect();
-        
-        // Position above the icon, centered
-        let top = rect.top - tooltipRect.height - 8;
-        let left = rect.left + rect.width / 2 - tooltipRect.width / 2;
-        
-        // Adjust if off-screen (right side)
-        if (left + tooltipRect.width > window.innerWidth - 8) {
-            left = window.innerWidth - tooltipRect.width - 8;
-        }
-        // Adjust if off-screen (left side)
-        if (left < 8) {
-            left = 8;
-        }
-        // If no space above, show below
-        if (top < 8) {
-            top = rect.bottom + 8;
-        }
-        
-        tooltip.style.top = `${top}px`;
-        tooltip.style.left = `${left}px`;
-        
-        // Store reference for cleanup
-        tooltip.dataset.tooltipId = Date.now();
-        icon.dataset.activeTooltipId = tooltip.dataset.tooltipId;
-    }
-
-    /**
-     * Hide tooltip for history icon
-     */
-    function hideTooltip() {
-        const existingTooltip = document.querySelector(".calc-history-tooltip");
-        if (existingTooltip) {
-            existingTooltip.remove();
-        }
-    }
-
-    /**
-     * Restore calculator from a history snapshot
-     */
-    async function restoreFromHistory(snapshotId) {
-        try {
-            const { getHistorySnapshot } = await import('./utils/calc-history-db.js');
-            const snapshot = await getHistorySnapshot(snapshotId);
-            if (!snapshot) return;
-            engine.restoreStateSnapshot(snapshot);
-            await saveAllStates(); // Update current state
-        } catch (err) {
-            console.error("Error restoring from history:", err);
-        }
-    }
-
-    /**
-     * Handle before-clear callback: save state as history snapshot
-     */
-    async function handleBeforeClearAll(snapshot) {
-        try {
-            // Only save if there were entries (non-empty calculation)
-            if (snapshot.entries && snapshot.entries.length > 0) {
-                await addHistorySnapshot(snapshot);
-                await renderHistoryIcons();
-            }
-        } catch (err) {
-            console.error("Error adding history snapshot:", err);
-        }
-    }
-
+    // --- SNAPSHOTS ---
     // --- UTILS ---
 
-    // Standard JS uses decimal point. 
-    function formatNumber(numStr) {
+    /**
+     * Normalize decimal text and remove trailing zeros.
+     * @param {string} value
+     * @returns {string}
+     * @2026-03-07
+     */
+    function normalizeDecimalString(value) {
+        if (!value) return "0";
+        const normalized = String(value).replace(',', '.');
+        if (!normalized.includes('.')) return normalized;
+        return normalized.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+    }
+
+    /**
+     * Check if value has more than N decimal digits.
+     * @param {number|string} numStr
+     * @param {number} maxDecimals
+     * @returns {boolean}
+     * @2026-03-07
+     */
+    function hasMoreThanDecimals(numStr, maxDecimals) {
+        const normalized = String(numStr ?? '').replace(',', '.');
+        const dotIdx = normalized.indexOf('.');
+        if (dotIdx < 0) return false;
+        return normalized.slice(dotIdx + 1).length > maxDecimals;
+    }
+
+    /**
+     * Format a number for display with float-mode tape rules.
+     * @param {number|string} numStr - The number to format
+     * @param {Object} options - Formatting options
+     * @param {'default'|'result-full'|'resumed-operand'} options.floatPolicy
+     * @returns {string} Formatted number
+     * @2026-03-07
+     */
+    function formatNumber(numStr, options = {}) {
         if (numStr === null || numStr === undefined) return "";
         const s = String(numStr);
         const n = Number(s.replace(',', '.'));
         if (Number.isNaN(n)) return s;
 
         let formatted = s;
+        
         if (!displaySettings?.isFloat) {
+            // Fixed decimal mode
             const dec = displaySettings?.decimals ?? 2;
             formatted = n.toFixed(dec);
+        } else {
+            const floatPolicy = options.floatPolicy || 'default';
+            if (!isFinite(n)) {
+                formatted = String(n);
+            } else if (floatPolicy === 'resumed-operand') {
+                const rounded = applyRounding(n, displaySettings?.mode || 'none', 6);
+                formatted = normalizeDecimalString(Number(rounded).toFixed(6));
+            } else if (floatPolicy === 'result-full') {
+                formatted = normalizeDecimalString(s);
+                if (formatted.includes('e') || formatted.includes('E')) {
+                    formatted = normalizeDecimalString(n.toPrecision(15));
+                }
+            } else {
+                formatted = normalizeDecimalString(s);
+            }
         }
 
+        // Apply thousands separator and decimal comma
         const parts = formatted.split(".");
         parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, "'");
         return parts.join(",");
+    }
+
+    /**
+     * Format raw pre-rounded value for rounding tooltip.
+     * @param {number|string} rawValue
+     * @returns {string}
+     * @2026-03-07
+     */
+    function formatRawValueForTooltip(rawValue) {
+        if (rawValue === null || rawValue === undefined) return "";
+        const n = Number(rawValue);
+        if (Number.isNaN(n)) return String(rawValue);
+
+        let normalized = normalizeDecimalString(Number(n).toPrecision(15));
+        if (normalized.includes('e') || normalized.includes('E')) {
+            normalized = String(n);
+        }
+
+        const parts = normalized.split('.');
+        parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+        return parts.join(',');
+    }
+
+    /**
+     * Calculate the display length of a formatted number (excluding spaces)
+     * @param {string} formattedNum - The formatted number string
+     * @returns {number} Character count
+     * @2026-03-07
+     */
+    function getNumberDisplayLength(formattedNum) {
+        if (!formattedNum) return 0;
+        // Count actual characters (including separators)
+        return String(formattedNum).length;
+    }
+
+    /**
+     * Get maximum number length from recent tape entries for alignment
+     * @param {number} lookbackCount - Number of recent entries to check
+     * @returns {number} Maximum length found
+     * @2026-03-07
+     */
+    function getMaxTapeNumberLength(lookbackCount = 20) {
+        if (!paperTape) return 12; // Default fallback
+        
+        const rows = paperTape.querySelectorAll('.tape-row');
+        const recentRows = Array.from(rows).slice(-lookbackCount);
+        
+        let maxLen = 8; // Minimum reasonable length
+        
+        recentRows.forEach(row => {
+            const valSpan = row.querySelector('.tape-val');
+            if (valSpan) {
+                const text = valSpan.textContent || "";
+                // Remove percentage suffix and rounding flags for length calculation
+                const cleaned = text.replace(/[%↑↓]/g, '').trim();
+                const len = cleaned.length;
+                if (len > maxLen) maxLen = len;
+            }
+        });
+        
+        return Math.min(maxLen, 20); // Cap at reasonable max
+    }
+
+    /**
+     * Pad a formatted number with non-breaking spaces for monospace alignment
+     * @param {string} formattedNum - The formatted number
+     * @param {number} targetLength - Desired total length
+     * @returns {string} Padded number
+     * @2026-03-07
+     */
+    function padNumberForAlignment(formattedNum, targetLength) {
+        if (!formattedNum) return "";
+        const currentLen = formattedNum.length;
+        if (currentLen >= targetLength) return formattedNum;
+        
+        const padding = targetLength - currentLen;
+        // Use non-breaking space (U+00A0) for proper monospace alignment
+        const nbsp = '\u00A0';
+        return nbsp.repeat(padding) + formattedNum;
     }
 
     // Play sound (optional simulation)
@@ -902,18 +1163,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     function applyUiSpecialCases(key) {
         let engineKey = key;
 
-        // --- SPECIAL UI LOGIC: Clear Entry / Clear All ---
+        // --- SPECIAL UI LOGIC: Clear always performs reset ---
         if (key === 'CE') {
-             const now = Date.now();
-             if (now - lastCETime < 500) {
-                 // Double Click -> Clear All
-                 engineKey = 'CLEAR_ALL';
-                 lastCETime = 0; 
-             } else {
-                 engineKey = 'CE';
-                 lastCETime = now;
-             }
-           }
+            engineKey = 'CLEAR_ALL';
+        }
 
         return engineKey;
     }
@@ -965,6 +1218,16 @@ document.addEventListener("DOMContentLoaded", async () => {
             triggerClearFeedback(forcePaperReset);
         }
 
+        if (engineKey === 'S_SAVE') {
+            showSaveDialog();
+            return;
+        }
+
+        if (engineKey === 'S_LOAD') {
+            showLoadDialog();
+            return;
+        }
+
         if (rateEditActive && (engineKey === '=' || engineKey === 'Enter')) {
             pendingRateInput = false;
             rateEditActive = false;
@@ -987,6 +1250,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         // --- DISPATCH TO ENGINE ---
         engine.pressKey(engineKey);
+        scheduleSessionStateSave();
     }
 
     function mapKeyboardToAction(eventOrKey) {
@@ -1017,6 +1281,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (key.toLowerCase() === 'd') return 'Δ';
         if (key.toLowerCase() === 'r') return '√';
         if (key.toLowerCase() === 'p') return '^';
+        if (key.toLowerCase() === 'a') return 'S_SAVE';
+        if (key.toLowerCase() === 'z') return 'S_LOAD';
         return null;
     }
     
@@ -1074,7 +1340,16 @@ document.addEventListener("DOMContentLoaded", async () => {
                 return;
             }
         }
-        if (isCalculatorFocused() && paperTape && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+        const action = mapKeyboardToAction(event);
+        const isFocused = isCalculatorFocused();
+        const isMappedAction = Boolean(action);
+        if (!isFocused && !isMappedAction && !pendingMemoryChord && !pendingGTChord) {
+            return;
+        }
+        if (isMappedAction && !isFocused) {
+            focusCalculatorWrapperDeferred(0);
+        }
+        if ((isFocused || isMappedAction) && paperTape && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
             event.preventDefault();
             const delta = event.key === 'ArrowUp' ? -40 : 40;
             paperTape.scrollTop += delta;
@@ -1210,14 +1485,22 @@ document.addEventListener("DOMContentLoaded", async () => {
             return;
         }
 
-        const action = mapKeyboardToAction(event);
+        const isPlainKey = !event.metaKey && !event.ctrlKey && !event.altKey;
+        if ((isFocused || isMappedAction) && !action && isPlainKey) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
+        if (action) {
+            event.preventDefault();
+        }
         if (event.key === 'Enter' || event.key === '=') {
             event.preventDefault();
         }
         if (event.key === '0' && (event.ctrlKey || event.altKey)) {
             event.preventDefault();
         }
-        setKeyActive(action, true);
+        activateKeyboardKey(action, event);
         if (action) handleInput(action, true);
     }
 
@@ -1233,32 +1516,13 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
         }
         const action = mapKeyboardToAction(event);
-        setKeyActive(action, false);
+        if (!isCalculatorFocused() && !action) {
+            return;
+        }
+        releaseKeyboardKey(action);
     }
-
-    // Render history icons at startup
-    renderHistoryIcons();
 
     // --- SAVE/LOAD USER SNAPSHOTS ---
-    const calcSaveBtn = document.getElementById("calc-save-btn");
-    const calcLoadBtn = document.getElementById("calc-load-btn");
-    const calcClearHistoryBtn = document.getElementById("calc-clear-history-btn");
-    
-    if (calcSaveBtn) {
-        calcSaveBtn.addEventListener("click", showSaveDialog);
-    }
-    if (calcLoadBtn) {
-        calcLoadBtn.addEventListener("click", showLoadDialog);
-    }
-    if (calcClearHistoryBtn) {
-        calcClearHistoryBtn.addEventListener("click", async () => {
-            if (confirm("Sei sicuro di voler svuotare la cronologia delle sessioni?")) {
-                await clearAllHistory();
-                await renderHistoryIcons();
-            }
-        });
-    }
-
     /**
      * Show save dialog with name input
      */
@@ -1458,8 +1722,43 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // 1. Mouse Click (Virtual Keys)
     keys.forEach(k => {
+        k.addEventListener("pointerdown", focusCalculatorWrapper);
         k.addEventListener("click", () => handleUiClick(k));
     });
+    if (calculatorWrapper) {
+        calculatorWrapper.addEventListener("pointerdown", focusCalculatorWrapper);
+        calculatorWrapper.addEventListener("pointerenter", () => {
+            calculatorWrapper.classList.add('is-pointer-over');
+            syncCalculatorFocusLed();
+        });
+        calculatorWrapper.addEventListener("pointerleave", () => {
+            calculatorWrapper.classList.remove('is-pointer-over');
+            syncCalculatorFocusLed();
+        });
+    }
+
+    // Restore keyboard focus whenever calculator tab becomes active
+    const calculatorTabButton = document.querySelector('.tab-btn[data-tab="calculator"]');
+    if (calculatorTabButton) {
+        calculatorTabButton.addEventListener('click', () => {
+            focusCalculatorWrapperDeferred(0);
+            focusCalculatorWrapperDeferred(80);
+        });
+    }
+
+    document.addEventListener('app:tab-changed', (event) => {
+        const tabId = event?.detail?.tabId;
+        logFocusDebug('app:tab-changed', { tabId });
+        if (tabId === 'calculator') {
+            focusCalculatorWrapperDeferred(0);
+            focusCalculatorWrapperDeferred(80);
+        } else {
+            syncCalculatorFocusLed();
+        }
+    });
+
+    document.addEventListener('visibilitychange', syncCalculatorFocusLed);
+    window.addEventListener('blur', () => releaseKeyboardKey(lastKeyboardActiveAction));
     bindTaxRateLongPress();
 
     // 2. Keyboard Input

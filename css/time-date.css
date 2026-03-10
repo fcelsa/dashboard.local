@@ -79,20 +79,20 @@
 .table-container {
   max-height: 450px;
   overflow-y: auto;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.4rem;
   scrollbar-width: thin;
 }
 
 .holidays-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.85rem;
+  font-size: 0.80rem;
 }
 
 .holidays-table th, 
 .holidays-table td {
   text-align: left;
-  padding: 0.4rem 0.4rem;
+  padding: 0.2rem 0.2rem;
   border-bottom: 1px solid var(--border);
 }
 
@@ -166,12 +166,16 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 4px;
+  width: 32px;
+  min-width: 32px;
+  align-self: stretch;
 }
 
 .nav-indicator {
-  min-height: 20px;
-  font-size: 19px;
+  min-height: 16px;
+  font-size: 16px;
   line-height: 1;
   color: var(--accent);
   font-weight: bold;

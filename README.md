@@ -1,58 +1,51 @@
-# Dashboard Local
+# Dashboard Local (Web Static)
 
-Dashboard with calendar, Eur<>USD exchange, calculator, sheet and eventually some other utility.
+Static website published on GitHub Pages.
 
-## GitHub Pages
+This project is now intentionally scoped as the web version only.
+The standalone app is maintained separately as a different project.
 
-This repository it's automatically published on GitHub Pages.
+## Product Direction
 
-## Disclaimer ⚠️
+1. Keep web and standalone codebases separate.
+2. Use this web version as a showcase/promotional surface for the standalone app.
+3. Keep this repository dependency-free (plain HTML/CSS/JS only).
 
-This is a personal project for my work environment, currently under development. There is no guarantee that the page will work as expected; you have been warned!
+## Hosting
 
-## Notes about calculator
+This repository is automatically published on GitHub Pages.
 
-The calculator is a highly customized imitation of the Olivetti business desktop calculators from the 1970s and 1980s, but don't expect it to work exactly like those!
+## Local Run
+
+Open `index.html` in a browser, or serve the folder with any static HTTP server.
+
+## Disclaimer
+
+Personal project under active development. Behavior may change without notice.
+
+## Notes About Calculator
+
+The calculator is a customized imitation of Olivetti business desktop calculators from the 1970s and 1980s.
 
 ## Project Structure
 
 ```
 dashboard.local/
-├── index.html              # Main page
-├── package.json            # Project metadata (ES modules)
-│
-├── css/                    # Stylesheets
-│   ├── styles.css          # General styles
-│   ├── calculator.css      # Calculator styles
-│   └── calc-sheet.css      # Calc-sheet styles
-│
-└── js/                     # JavaScript modules (ES6)
-    ├── main.js             # Application entry point
-    ├── script.js           # Dashboard (calendar, FX, clock)
-    ├── calculator.js       # Calculator UI & interactions
-    ├── calculator-engine.js # Calculator core engine
-    ├── calc-sheet.js       # Spreadsheet functionality
-    ├── moon.js             # Moon phase calculations
-    │
-    ├── engine/             # Business logic
-    │   └── business-math.js
-    │
-    ├── ui/                 # UI components
-    │   ├── calendar-views.js
-    │   ├── tabs.js
-    │   └── theme.js
-    │
-    └── utils/              # Utilities
-        ├── calc-history-db.js
-        ├── cookies.js
-        ├── dashboard-sync.js
-        ├── gist-sync.js
-        └── number-utils.js
+├── index.html
+├── css/
+│   ├── styles.css
+│   ├── calculator.css
+│   ├── calc-sheet.css
+│   └── time-date.css
+└── js/
+    ├── main.js
+    ├── script.js
+    ├── calculator.js
+    ├── calculator-engine.js
+    ├── calc-sheet.js
+    ├── moon.js
+    ├── time-date-manager.js
+    ├── ui/
+    └── utils/
 ```
-
-## Development
-
-- Built with vanilla JavaScript (ES6 modules)
-- No build step required
-- Serve locally: `npm start` (runs on http://localhost:5000/)
 
